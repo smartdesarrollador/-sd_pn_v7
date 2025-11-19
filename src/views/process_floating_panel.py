@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QEvent, QTimer
 from PyQt6.QtGui import QFont, QCursor
 import sys
 import logging
+import webbrowser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -509,27 +510,70 @@ class ProcessFloatingPanel(QWidget):
                     item_type = step.item_type  # Get item type from ProcessStep
 
                     if item_type == "URL":
-                        # URL button - open in browser
-                        url_button = QPushButton("🌐")
-                        url_button.setFixedSize(32, 32)
-                        url_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                        url_button.setStyleSheet("""
+                        # Info button - show item details
+                        info_button = QPushButton("ℹ️")
+                        info_button.setFixedSize(30, 30)
+                        info_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                        info_button.setStyleSheet("""
                             QPushButton {
-                                background-color: #3d3d3d;
-                                color: #00ccff;
-                                border: 1px solid #555555;
-                                border-radius: 16px;
-                                font-size: 12pt;
+                                background-color: transparent;
+                                border: none;
+                                font-size: 14pt;
                             }
                             QPushButton:hover {
-                                background-color: #00ccff;
-                                color: #000000;
-                                border-color: #00ccff;
+                                background-color: #3e3e42;
+                                border-radius: 3px;
                             }
                         """)
-                        url_button.setToolTip(f"Abrir URL: {step.item_content}")
-                        url_button.clicked.connect(lambda checked, content=step.item_content: self.on_url_button_clicked(content))
-                        item_row_layout.addWidget(url_button)
+                        info_button.setToolTip("Ver detalles del item")
+                        info_button.clicked.connect(lambda checked, i=item: self.on_info_button_clicked(i))
+                        item_row_layout.addWidget(info_button)
+
+                        # Open in embedded browser button
+                        embedded_url_button = QPushButton("🌐")
+                        embedded_url_button.setFixedSize(35, 35)
+                        embedded_url_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                        embedded_url_button.setStyleSheet("""
+                            QPushButton {
+                                background-color: #007acc;
+                                color: #ffffff;
+                                border: none;
+                                border-radius: 4px;
+                                font-size: 16pt;
+                            }
+                            QPushButton:hover {
+                                background-color: #005a9e;
+                            }
+                            QPushButton:pressed {
+                                background-color: #004578;
+                            }
+                        """)
+                        embedded_url_button.setToolTip("Abrir en navegador embebido")
+                        embedded_url_button.clicked.connect(lambda checked, content=step.item_content: self.on_embedded_url_button_clicked(content))
+                        item_row_layout.addWidget(embedded_url_button)
+
+                        # Open in system browser button
+                        external_url_button = QPushButton("🔗")
+                        external_url_button.setFixedSize(35, 35)
+                        external_url_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                        external_url_button.setStyleSheet("""
+                            QPushButton {
+                                background-color: #0078d4;
+                                color: #ffffff;
+                                border: none;
+                                border-radius: 4px;
+                                font-size: 16pt;
+                            }
+                            QPushButton:hover {
+                                background-color: #106ebe;
+                            }
+                            QPushButton:pressed {
+                                background-color: #005a9e;
+                            }
+                        """)
+                        external_url_button.setToolTip("Abrir en navegador predeterminado del sistema")
+                        external_url_button.clicked.connect(lambda checked, content=step.item_content: self.on_external_url_button_clicked(content))
+                        item_row_layout.addWidget(external_url_button)
 
                     elif item_type == "CODE":
                         # CODE button - execute command
@@ -908,14 +952,74 @@ class ProcessFloatingPanel(QWidget):
 
     # ========== ACTION BUTTON HANDLERS ==========
 
-    def on_url_button_clicked(self, url: str):
-        """Handle URL button click - open in default browser"""
+    def on_info_button_clicked(self, item: Item):
+        """Handle info button click - show item details dialog"""
+        try:
+            from views.dialogs.item_details_dialog import ItemDetailsDialog
+
+            dialog = ItemDetailsDialog(item, config_manager=self.config_manager, parent=self)
+            dialog.item_state_changed.connect(self.on_item_state_changed)
+            dialog.exec()
+            logger.info(f"Showing details for item: {item.label}")
+        except Exception as e:
+            logger.error(f"Error showing item details: {e}", exc_info=True)
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"No se pudo mostrar los detalles del item:\n{str(e)}"
+            )
+
+    def on_item_state_changed(self, item_id: int):
+        """Handle item state change (favorite/archived) - reload process"""
+        if self.current_process:
+            logger.info(f"Item {item_id} state changed, reloading process")
+            self.load_process(self.current_process)
+
+    def on_embedded_url_button_clicked(self, url: str):
+        """Handle embedded browser button click - open URL in embedded browser"""
+        try:
+            # Ensure URL has proper protocol
+            if not url.startswith(('http://', 'https://')):
+                if url.startswith('www.'):
+                    url = 'https://' + url
+                else:
+                    url = 'https://' + url
+
+            # Use main window's method (same as floating panel does)
+            if self.main_window and hasattr(self.main_window, 'on_url_open_in_browser'):
+                self.main_window.on_url_open_in_browser(url)
+                logger.info(f"Opening URL in embedded browser: {url}")
+            else:
+                logger.warning("Main window does not have on_url_open_in_browser method")
+                QMessageBox.warning(
+                    self,
+                    "No disponible",
+                    "El navegador embebido no está disponible"
+                )
+        except Exception as e:
+            logger.error(f"Error opening URL in embedded browser: {e}", exc_info=True)
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"No se pudo abrir la URL:\n{url}\n\nError: {str(e)}"
+            )
+
+    def on_external_url_button_clicked(self, url: str):
+        """Handle external URL button click - open in system default browser"""
         try:
             import webbrowser
+
+            # Ensure URL has proper protocol
+            if not url.startswith(('http://', 'https://')):
+                if url.startswith('www.'):
+                    url = 'https://' + url
+                else:
+                    url = 'https://' + url
+
             webbrowser.open(url)
-            logger.info(f"Opening URL: {url}")
+            logger.info(f"Opening URL in system browser: {url}")
         except Exception as e:
-            logger.error(f"Error opening URL {url}: {e}")
+            logger.error(f"Error opening URL {url}: {e}", exc_info=True)
             QMessageBox.warning(
                 self,
                 "Error",
