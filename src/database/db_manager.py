@@ -665,7 +665,8 @@ class DBManager:
         return result[0] if result else None
 
     def add_category(self, name: str, icon: str = None,
-                     is_predefined: bool = False, order_index: int = None) -> int:
+                     is_predefined: bool = False, order_index: int = None,
+                     tags: List[str] = None) -> int:
         """
         Add new category
 
@@ -674,6 +675,7 @@ class DBManager:
             icon: Category icon (optional)
             is_predefined: Whether this is a predefined category
             order_index: Order index (optional, will auto-calculate if None)
+            tags: List of tags (optional)
 
         Returns:
             int: New category ID
@@ -685,17 +687,21 @@ class DBManager:
             )
             order_index = (max_order[0]['max_order'] or 0) + 1
 
+        # Convert tags to JSON
+        tags_json = json.dumps(tags) if tags else None
+
         query = """
-            INSERT INTO categories (name, icon, order_index, is_predefined, updated_at)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO categories (name, icon, order_index, is_predefined, tags, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """
-        category_id = self.execute_update(query, (name, icon, order_index, is_predefined))
-        logger.info(f"Category added: {name} (ID: {category_id}, order_index: {order_index})")
+        category_id = self.execute_update(query, (name, icon, order_index, is_predefined, tags_json))
+        logger.info(f"Category added: {name} (ID: {category_id}, order_index: {order_index}, tags: {tags})")
         return category_id
 
     def update_category(self, category_id: int, name: str = None,
                         icon: str = None, order_index: int = None,
-                        is_active: bool = None) -> None:
+                        is_active: bool = None, tags: List[str] = None,
+                        color: str = None) -> None:
         """
         Update category fields
 
@@ -705,6 +711,8 @@ class DBManager:
             icon: New icon (optional)
             order_index: New order (optional)
             is_active: New active status (optional)
+            tags: List of tags (optional)
+            color: Color hex code (optional)
         """
         updates = []
         params = []
@@ -721,6 +729,12 @@ class DBManager:
         if is_active is not None:
             updates.append("is_active = ?")
             params.append(is_active)
+        if tags is not None:
+            updates.append("tags = ?")
+            params.append(json.dumps(tags))
+        if color is not None:
+            updates.append("color = ?")
+            params.append(color)
 
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")

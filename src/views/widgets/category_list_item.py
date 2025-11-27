@@ -129,6 +129,37 @@ class CategoryListItem(QWidget):
         self.name_label.setMinimumWidth(200)
         layout.addWidget(self.name_label)
 
+        # Tags label
+        tags = self.category.get('tags')
+        if tags:
+            # Parse tags if it's a JSON string
+            import json
+            if isinstance(tags, str):
+                try:
+                    tags = json.loads(tags)
+                except:
+                    tags = []
+
+            if tags and isinstance(tags, list):
+                tags_text = ", ".join(tags[:3])  # Show max 3 tags
+                if len(tags) > 3:
+                    tags_text += f" +{len(tags) - 3}"
+
+                self.tags_label = QLabel(f"🏷️ {tags_text}")
+                self.tags_label.setStyleSheet("""
+                    QLabel {
+                        background-color: rgba(0, 122, 204, 0.2);
+                        color: #4fc3f7;
+                        border: 1px solid rgba(0, 122, 204, 0.4);
+                        border-radius: 10px;
+                        padding: 4px 10px;
+                        font-size: 9pt;
+                    }
+                """)
+                self.tags_label.setFixedHeight(24)
+                self.tags_label.setToolTip(", ".join(tags))
+                layout.addWidget(self.tags_label)
+
         # Spacer
         layout.addStretch()
 

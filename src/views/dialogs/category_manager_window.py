@@ -258,9 +258,15 @@ class CategoryManagerWindow(QWidget):
     def _create_search_bar(self, parent_layout):
         """Create the search bar"""
         search_container = QWidget()
-        search_layout = QHBoxLayout(search_container)
+        search_layout = QVBoxLayout(search_container)
         search_layout.setContentsMargins(0, 0, 0, 0)
         search_layout.setSpacing(10)
+
+        # First row: Search input and controls
+        first_row = QWidget()
+        first_row_layout = QHBoxLayout(first_row)
+        first_row_layout.setContentsMargins(0, 0, 0, 0)
+        first_row_layout.setSpacing(10)
 
         # Search icon label
         search_icon = QLabel("🔍")
@@ -270,7 +276,7 @@ class CategoryManagerWindow(QWidget):
                 color: #888888;
             }
         """)
-        search_layout.addWidget(search_icon)
+        first_row_layout.addWidget(search_icon)
 
         # Search input
         self.search_input = QLineEdit()
@@ -289,7 +295,7 @@ class CategoryManagerWindow(QWidget):
             }
         """)
         self.search_input.textChanged.connect(self._on_search_text_changed)
-        search_layout.addWidget(self.search_input, 1)
+        first_row_layout.addWidget(self.search_input, 1)
 
         # Clear button
         self.clear_btn = QPushButton("×")
@@ -311,7 +317,7 @@ class CategoryManagerWindow(QWidget):
         self.clear_btn.clicked.connect(self._clear_search)
         self.clear_btn.hide()  # Hidden by default
         self.clear_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        search_layout.addWidget(self.clear_btn)
+        first_row_layout.addWidget(self.clear_btn)
 
         # Select All button
         self.select_all_btn = QPushButton("☑ Todos")
@@ -335,8 +341,8 @@ class CategoryManagerWindow(QWidget):
         """)
         self.select_all_btn.clicked.connect(self._select_all_categories)
         self.select_all_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.select_all_btn.setToolTip("Activar todas las categorías")
-        search_layout.addWidget(self.select_all_btn)
+        self.select_all_btn.setToolTip("Activar categorías filtradas (visibles)")
+        first_row_layout.addWidget(self.select_all_btn)
 
         # Deselect All button
         self.deselect_all_btn = QPushButton("☐ Ninguno")
@@ -360,8 +366,147 @@ class CategoryManagerWindow(QWidget):
         """)
         self.deselect_all_btn.clicked.connect(self._deselect_all_categories)
         self.deselect_all_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.deselect_all_btn.setToolTip("Desactivar todas las categorías")
-        search_layout.addWidget(self.deselect_all_btn)
+        self.deselect_all_btn.setToolTip("Desactivar categorías filtradas (visibles)")
+        first_row_layout.addWidget(self.deselect_all_btn)
+
+        # Add first row to main layout
+        search_layout.addWidget(first_row)
+
+        # Second row: Search mode checkboxes
+        second_row = QWidget()
+        second_row_layout = QHBoxLayout(second_row)
+        second_row_layout.setContentsMargins(30, 0, 0, 0)  # Indent to align with search input
+        second_row_layout.setSpacing(15)
+
+        # Label for search mode
+        mode_label = QLabel("Buscar por:")
+        mode_label.setStyleSheet("""
+            QLabel {
+                color: #888888;
+                font-size: 10pt;
+            }
+        """)
+        second_row_layout.addWidget(mode_label)
+
+        # Checkbox for search by name
+        from PyQt6.QtWidgets import QCheckBox
+        self.search_by_name_checkbox = QCheckBox("Nombre")
+        self.search_by_name_checkbox.setChecked(True)  # Default: search by name
+        self.search_by_name_checkbox.setStyleSheet("""
+            QCheckBox {
+                color: #cccccc;
+                font-size: 10pt;
+                spacing: 5px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border-radius: 3px;
+                border: 2px solid #3d3d3d;
+                background-color: #1e1e1e;
+            }
+            QCheckBox::indicator:hover {
+                border: 2px solid #007acc;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #007acc;
+                border: 2px solid #005a9e;
+            }
+        """)
+        self.search_by_name_checkbox.stateChanged.connect(self._on_search_mode_changed)
+        self.search_by_name_checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        second_row_layout.addWidget(self.search_by_name_checkbox)
+
+        # Checkbox for search by tags
+        self.search_by_tags_checkbox = QCheckBox("Tags")
+        self.search_by_tags_checkbox.setChecked(False)
+        self.search_by_tags_checkbox.setStyleSheet("""
+            QCheckBox {
+                color: #cccccc;
+                font-size: 10pt;
+                spacing: 5px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border-radius: 3px;
+                border: 2px solid #3d3d3d;
+                background-color: #1e1e1e;
+            }
+            QCheckBox::indicator:hover {
+                border: 2px solid #007acc;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #007acc;
+                border: 2px solid #005a9e;
+            }
+        """)
+        self.search_by_tags_checkbox.stateChanged.connect(self._on_search_mode_changed)
+        self.search_by_tags_checkbox.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        second_row_layout.addWidget(self.search_by_tags_checkbox)
+
+        # Spacer between search mode and status filter
+        second_row_layout.addSpacing(30)
+
+        # Status filter label
+        status_label = QLabel("Estado:")
+        status_label.setStyleSheet("""
+            QLabel {
+                color: #888888;
+                font-size: 10pt;
+            }
+        """)
+        second_row_layout.addWidget(status_label)
+
+        # Status filter combobox
+        from PyQt6.QtWidgets import QComboBox
+        self.status_filter_combo = QComboBox()
+        self.status_filter_combo.addItem("Todos", "all")
+        self.status_filter_combo.addItem("Activados", "active")
+        self.status_filter_combo.addItem("Desactivados", "inactive")
+        self.status_filter_combo.setCurrentIndex(0)  # Default: Todos
+        self.status_filter_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #2d2d2d;
+                color: #cccccc;
+                border: 1px solid #3d3d3d;
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 10pt;
+                min-width: 120px;
+            }
+            QComboBox:hover {
+                border: 1px solid #007acc;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 5px solid #cccccc;
+                margin-right: 5px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #2d2d2d;
+                color: #cccccc;
+                border: 1px solid #3d3d3d;
+                selection-background-color: #007acc;
+                selection-color: #ffffff;
+                outline: none;
+            }
+        """)
+        self.status_filter_combo.currentIndexChanged.connect(self._on_status_filter_changed)
+        self.status_filter_combo.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        second_row_layout.addWidget(self.status_filter_combo)
+
+        # Spacer
+        second_row_layout.addStretch()
+
+        # Add second row to main layout
+        search_layout.addWidget(second_row)
 
         parent_layout.addWidget(search_container)
 
@@ -519,14 +664,18 @@ class CategoryManagerWindow(QWidget):
         self.search_input.clear()
 
     def _select_all_categories(self):
-        """Activate all categories"""
+        """Activate all FILTERED categories (only visible ones)"""
         try:
-            logger.info("Selecting all categories")
+            logger.info("Selecting all filtered categories")
 
-            # Get all category IDs
-            category_ids = [cat['id'] for cat in self.all_categories]
+            # Get FILTERED category IDs (only visible ones)
+            category_ids = [cat['id'] for cat in self.filtered_categories]
 
-            # Update database for all categories
+            if not category_ids:
+                logger.info("No categories to activate")
+                return
+
+            # Update database for filtered categories only
             for cat_id in category_ids:
                 self.db.set_category_active(cat_id, True)
 
@@ -536,7 +685,7 @@ class CategoryManagerWindow(QWidget):
             # Emit signal to update sidebar
             self.categories_changed.emit()
 
-            logger.info(f"Activated {len(category_ids)} categories")
+            logger.info(f"Activated {len(category_ids)} filtered categories")
 
         except Exception as e:
             logger.error(f"Error selecting all categories: {e}", exc_info=True)
@@ -547,15 +696,23 @@ class CategoryManagerWindow(QWidget):
             )
 
     def _deselect_all_categories(self):
-        """Deactivate all categories"""
+        """Deactivate all FILTERED categories (only visible ones)"""
         try:
-            logger.info("Deselecting all categories")
+            logger.info("Deselecting all filtered categories")
+
+            # Get FILTERED category IDs (only visible ones)
+            category_ids = [cat['id'] for cat in self.filtered_categories]
+
+            if not category_ids:
+                logger.info("No categories to deactivate")
+                return
 
             # Confirm action
+            count = len(category_ids)
             reply = QMessageBox.question(
                 self,
                 "Confirmar",
-                "¿Desactivar todas las categorías?\n\nEsto ocultará todas las categorías del sidebar.",
+                f"¿Desactivar las {count} categorías filtradas?\n\nEsto ocultará estas categorías del sidebar.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
@@ -563,10 +720,7 @@ class CategoryManagerWindow(QWidget):
             if reply == QMessageBox.StandardButton.No:
                 return
 
-            # Get all category IDs
-            category_ids = [cat['id'] for cat in self.all_categories]
-
-            # Update database for all categories
+            # Update database for filtered categories only
             for cat_id in category_ids:
                 self.db.set_category_active(cat_id, False)
 
@@ -576,7 +730,7 @@ class CategoryManagerWindow(QWidget):
             # Emit signal to update sidebar
             self.categories_changed.emit()
 
-            logger.info(f"Deactivated {len(category_ids)} categories")
+            logger.info(f"Deactivated {count} filtered categories")
 
         except Exception as e:
             logger.error(f"Error deselecting all categories: {e}", exc_info=True)
@@ -586,19 +740,90 @@ class CategoryManagerWindow(QWidget):
                 f"No se pudieron desactivar todas las categorías:\n{str(e)}"
             )
 
+    def _on_search_mode_changed(self):
+        """Handle search mode checkbox changes"""
+        # Ensure at least one checkbox is selected
+        if not self.search_by_name_checkbox.isChecked() and not self.search_by_tags_checkbox.isChecked():
+            # Re-check the one that was just unchecked
+            sender = self.sender()
+            if sender:
+                sender.blockSignals(True)
+                sender.setChecked(True)
+                sender.blockSignals(False)
+            return
+
+        # Update placeholder text based on selected mode
+        modes = []
+        if self.search_by_name_checkbox.isChecked():
+            modes.append("nombre")
+        if self.search_by_tags_checkbox.isChecked():
+            modes.append("tags")
+
+        placeholder = f"Buscar por {' y '.join(modes)}..."
+        self.search_input.setPlaceholderText(placeholder)
+
+        # Re-run search with new mode
+        self._perform_search()
+
+    def _on_status_filter_changed(self):
+        """Handle status filter changes"""
+        # Re-run search with new status filter
+        self._perform_search()
+
     def _perform_search(self):
         """Perform the search and update the list"""
         search_text = self.search_input.text().strip().lower()
 
+        # Get status filter
+        status_filter = self.status_filter_combo.currentData()  # "all", "active", or "inactive"
+
+        # First, apply status filter
+        if status_filter == "active":
+            base_categories = [cat for cat in self.all_categories if cat.get('is_active', 1)]
+        elif status_filter == "inactive":
+            base_categories = [cat for cat in self.all_categories if not cat.get('is_active', 1)]
+        else:  # "all"
+            base_categories = self.all_categories
+
+        # Then, apply search filter
         if not search_text:
-            # Show all categories
-            self.filtered_categories = self.all_categories
+            # Show all categories (with status filter applied)
+            self.filtered_categories = base_categories
         else:
-            # Filter categories by name
-            self.filtered_categories = [
-                cat for cat in self.all_categories
-                if search_text in cat['name'].lower()
-            ]
+            # Determine search mode
+            search_by_name = self.search_by_name_checkbox.isChecked()
+            search_by_tags = self.search_by_tags_checkbox.isChecked()
+
+            self.filtered_categories = []
+
+            for cat in base_categories:
+                match = False
+
+                # Search by name
+                if search_by_name and search_text in cat['name'].lower():
+                    match = True
+
+                # Search by tags
+                if search_by_tags and not match:
+                    tags = cat.get('tags')
+                    if tags:
+                        # Parse tags if it's a JSON string
+                        import json
+                        if isinstance(tags, str):
+                            try:
+                                tags = json.loads(tags)
+                            except:
+                                tags = []
+
+                        if isinstance(tags, list):
+                            # Check if search text matches any tag
+                            for tag in tags:
+                                if search_text in tag.lower():
+                                    match = True
+                                    break
+
+                if match:
+                    self.filtered_categories.append(cat)
 
         self.update_category_list()
 
@@ -667,7 +892,8 @@ class CategoryManagerWindow(QWidget):
                 category_id = self.db.add_category(
                     name=data['name'],
                     icon=data['icon'],
-                    is_predefined=False
+                    is_predefined=False,
+                    tags=data.get('tags', [])
                 )
 
                 # Update color if provided
@@ -732,12 +958,13 @@ class CategoryManagerWindow(QWidget):
             data = dialog.get_data()
 
             try:
-                # Update category in database
-                self.db.execute_update(
-                    """UPDATE categories
-                       SET name = ?, icon = ?, color = ?, updated_at = CURRENT_TIMESTAMP
-                       WHERE id = ?""",
-                    (data['name'], data['icon'], data.get('color'), category_id)
+                # Update category in database usando update_category
+                self.db.update_category(
+                    category_id=category_id,
+                    name=data['name'],
+                    icon=data['icon'],
+                    tags=data.get('tags', []),
+                    color=data.get('color')
                 )
 
                 logger.info(f"Category {category_id} updated: {data['name']}")

@@ -17,7 +17,8 @@ class Category:
         is_active: bool = True,
         is_predefined: bool = False,
         color: Optional[str] = None,
-        badge: Optional[str] = None
+        badge: Optional[str] = None,
+        tags: Optional[List[str]] = None
     ):
         self.id = category_id
         self.name = name
@@ -27,6 +28,7 @@ class Category:
         self.is_predefined = is_predefined
         self.color = color
         self.badge = badge
+        self.tags = tags if tags is not None else []
         self.items: List[Item] = []
 
         # Atributos extendidos (para filtros avanzados)
@@ -76,6 +78,7 @@ class Category:
             "is_predefined": self.is_predefined,
             "color": self.color,
             "badge": self.badge,
+            "tags": self.tags,
             "item_count": self.item_count,
             "total_uses": self.total_uses,
             "last_accessed": self.last_accessed,
@@ -98,7 +101,8 @@ class Category:
             is_active=data.get("is_active", True),
             is_predefined=data.get("is_predefined", False),
             color=data.get("color"),
-            badge=data.get("badge")
+            badge=data.get("badge"),
+            tags=data.get("tags", [])
         )
 
         # Cargar atributos extendidos

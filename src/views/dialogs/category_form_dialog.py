@@ -189,6 +189,16 @@ class CategoryFormDialog(QDialog):
 
         main_layout.addLayout(color_layout)
 
+        # Tags field (optional)
+        tags_label = QLabel("Tags (opcional):")
+        tags_label.setStyleSheet("font-weight: 500;")
+        main_layout.addWidget(tags_label)
+
+        self.tags_input = QLineEdit()
+        self.tags_input.setPlaceholderText("backend, devops, programacion (separados por comas)")
+        self.tags_input.setMaxLength(200)
+        main_layout.addWidget(self.tags_input)
+
         # Spacer
         main_layout.addStretch()
 
@@ -226,6 +236,15 @@ class CategoryFormDialog(QDialog):
             color = self.category.get('color')
             if color:
                 self.color_input.setText(color)
+
+            # Load tags
+            tags = self.category.get('tags')
+            if tags:
+                # Si tags es una lista, convertir a string separado por comas
+                if isinstance(tags, list):
+                    self.tags_input.setText(", ".join(tags))
+                elif isinstance(tags, str):
+                    self.tags_input.setText(tags)
 
     def _update_icon_preview(self, text):
         """Update icon preview"""
@@ -333,8 +352,13 @@ class CategoryFormDialog(QDialog):
 
     def get_data(self):
         """Get form data as dictionary"""
+        # Parse tags from input
+        tags_text = self.tags_input.text().strip()
+        tags = [tag.strip() for tag in tags_text.split(",") if tag.strip()] if tags_text else []
+
         return {
             'name': self.name_input.text().strip(),
             'icon': self.icon_input.text().strip() or "📁",
-            'color': self.color_input.text().strip() or None
+            'color': self.color_input.text().strip() or None,
+            'tags': tags
         }
