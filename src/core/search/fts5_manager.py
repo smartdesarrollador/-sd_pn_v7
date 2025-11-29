@@ -70,7 +70,6 @@ class FTS5Manager:
                     i.label,
                     i.content,
                     i.type,
-                    i.tags,
                     i.description,
                     i.is_favorite,
                     i.is_sensitive,
@@ -92,9 +91,9 @@ class FTS5Manager:
 
             execution_time = (time.time() - start_time) * 1000
 
-            # Convert to list of dicts
+            # Convert to list of dicts (removed 'tags' from columns)
             columns = [
-                'id', 'category_id', 'label', 'content', 'type', 'tags', 'description',
+                'id', 'category_id', 'label', 'content', 'type', 'description',
                 'is_favorite', 'is_sensitive', 'use_count', 'last_used', 'created_at',
                 'category_name', 'category_icon', 'category_color', 'rank_score'
             ]
@@ -102,6 +101,8 @@ class FTS5Manager:
             results_list = []
             for row in results:
                 result_dict = dict(zip(columns, row))
+                # Load tags from relational structure
+                result_dict['tags'] = self.db.get_tags_by_item(result_dict['id'])
                 results_list.append(result_dict)
 
             logger.info(f"FTS5 basic search: '{query}' -> {len(results_list)} results in {execution_time:.2f}ms")
@@ -191,7 +192,6 @@ class FTS5Manager:
                     i.label,
                     i.content,
                     i.type,
-                    i.tags,
                     i.description,
                     i.is_favorite,
                     i.is_sensitive,
@@ -213,9 +213,9 @@ class FTS5Manager:
 
             execution_time = (time.time() - start_time) * 1000
 
-            # Convert to dicts
+            # Convert to dicts (removed 'tags' from columns)
             columns = [
-                'id', 'category_id', 'label', 'content', 'type', 'tags', 'description',
+                'id', 'category_id', 'label', 'content', 'type', 'description',
                 'is_favorite', 'is_sensitive', 'use_count', 'last_used',
                 'category_name', 'category_icon', 'label_snippet', 'content_snippet', 'rank_score'
             ]
@@ -223,6 +223,8 @@ class FTS5Manager:
             results_list = []
             for row in results:
                 result_dict = dict(zip(columns, row))
+                # Load tags from relational structure
+                result_dict['tags'] = self.db.get_tags_by_item(result_dict['id'])
                 results_list.append(result_dict)
 
             logger.info(f"FTS5 search with highlighting: '{query}' -> {len(results_list)} results in {execution_time:.2f}ms")
@@ -372,7 +374,6 @@ class FTS5Manager:
                     i.label,
                     i.content,
                     i.type,
-                    i.tags,
                     i.description,
                     i.is_favorite,
                     i.is_sensitive,
@@ -392,9 +393,9 @@ class FTS5Manager:
 
             execution_time = (time.time() - start_time) * 1000
 
-            # Convert to dicts
+            # Convert to dicts (removed 'tags' from columns)
             columns = [
-                'id', 'category_id', 'label', 'content', 'type', 'tags', 'description',
+                'id', 'category_id', 'label', 'content', 'type', 'description',
                 'is_favorite', 'is_sensitive', 'use_count', 'last_used', 'created_at',
                 'category_name', 'category_icon', 'rank_score'
             ]
@@ -402,6 +403,8 @@ class FTS5Manager:
             results_list = []
             for row in results:
                 result_dict = dict(zip(columns, row))
+                # Load tags from relational structure
+                result_dict['tags'] = self.db.get_tags_by_item(result_dict['id'])
                 results_list.append(result_dict)
 
             filter_info = {

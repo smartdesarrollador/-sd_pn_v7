@@ -754,11 +754,15 @@ class TagsFilterPanel(QWidget):
         # Extract unique tags from results
         new_tags = set()
         for result in results:
-            tags_str = result.get('tags', '')
-            if tags_str:
-                # Split tags by comma and clean whitespace
-                tags = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
-                new_tags.update(tags)
+            tags = result.get('tags', [])
+            if tags:
+                # Tags are already a list (relational structure)
+                if isinstance(tags, list):
+                    new_tags.update(tags)
+                else:
+                    # Fallback for legacy format (CSV string)
+                    tags_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+                    new_tags.update(tags_list)
 
         # Only update if tags changed
         if new_tags == self.available_tags:

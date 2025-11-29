@@ -206,12 +206,18 @@ class ResultsTreeView(QWidget):
             item_node.setText(1, f"{type_icon} {item_type}")
 
             # Tags
-            tags = result.get('tags', '') or ''
-            if tags:
+            tags = result.get('tags', [])
+            if isinstance(tags, list):
+                tags_str = ', '.join(tags) if tags else ''
+            else:
+                # Legacy format (CSV string)
+                tags_str = tags if tags else ''
+
+            if tags_str:
                 # Truncate long tags
-                if len(tags) > 30:
-                    tags = tags[:27] + '...'
-                item_node.setText(2, tags)
+                if len(tags_str) > 30:
+                    tags_str = tags_str[:27] + '...'
+                item_node.setText(2, tags_str)
                 item_node.setForeground(2, QColor('#f093fb'))
 
             # Use count
@@ -257,6 +263,13 @@ class ResultsTreeView(QWidget):
             # It's an item, emit signal
             result = data
 
+            # Handle tags (already a list from relational structure)
+            tags_data = result.get('tags', [])
+            if isinstance(tags_data, str):
+                tags_list = tags_data.split(',') if tags_data else []
+            else:
+                tags_list = tags_data if tags_data else []
+
             # Convert to Item object
             item_obj = Item(
                 item_id=str(result.get('id', '')),
@@ -264,7 +277,7 @@ class ResultsTreeView(QWidget):
                 content=result.get('content', ''),
                 item_type=result.get('type', 'TEXT').lower(),  # Convert to lowercase for ItemType enum
                 description=result.get('description'),
-                tags=result.get('tags', '').split(',') if result.get('tags') else [],
+                tags=tags_list,
                 is_favorite=bool(result.get('is_favorite', 0)),
                 is_sensitive=bool(result.get('is_sensitive', 0)),
                 is_active=True

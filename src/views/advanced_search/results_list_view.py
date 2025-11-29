@@ -137,13 +137,22 @@ class ResultsListView(QWidget):
         for result in results:
             try:
                 # Convert result dict to Item object
+                # Handle tags (already a list from relational structure)
+                tags_data = result.get('tags', [])
+                if isinstance(tags_data, str):
+                    # Legacy format (CSV string)
+                    tags_list = tags_data.split(',') if tags_data else []
+                else:
+                    # Already a list
+                    tags_list = tags_data if tags_data else []
+
                 item = Item(
                     item_id=str(result.get('id', '')),
                     label=result.get('label', ''),
                     content=result.get('content', ''),
                     item_type=result.get('type', 'TEXT').lower(),  # Convert to lowercase for ItemType enum
                     description=result.get('description'),
-                    tags=result.get('tags', '').split(',') if result.get('tags') else [],
+                    tags=tags_list,
                     is_favorite=bool(result.get('is_favorite', 0)),
                     is_sensitive=bool(result.get('is_sensitive', 0)),
                     is_active=True

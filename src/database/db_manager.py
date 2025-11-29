@@ -862,24 +862,13 @@ class DBManager:
         results = self.execute_query(query, (category_id,))
 
         # Initialize encryption manager for decrypting sensitive items
-        from core.encryption_manager import EncryptionManager
+        from src.core.encryption_manager import EncryptionManager
         encryption_manager = EncryptionManager()
 
-        # Parse tags and decrypt sensitive content
+        # Load tags from relational structure and decrypt sensitive content
         for item in results:
-            # Parse tags from JSON or CSV format
-            if item['tags']:
-                try:
-                    # Try to parse as JSON first
-                    item['tags'] = json.loads(item['tags'])
-                except json.JSONDecodeError:
-                    # If JSON parsing fails, try CSV format (legacy)
-                    if isinstance(item['tags'], str):
-                        item['tags'] = [tag.strip() for tag in item['tags'].split(',') if tag.strip()]
-                    else:
-                        item['tags'] = []
-            else:
-                item['tags'] = []
+            # Load tags from relational structure (tags and item_tags tables)
+            item['tags'] = self.get_tags_by_item(item['id'])
 
             # Decrypt sensitive content
             if item.get('is_sensitive') and item.get('content'):
@@ -906,23 +895,13 @@ class DBManager:
         result = self.execute_query(query, (item_id,))
         if result:
             item = result[0]
-            # Parse tags from JSON or CSV format
-            if item['tags']:
-                try:
-                    # Try to parse as JSON first
-                    item['tags'] = json.loads(item['tags'])
-                except json.JSONDecodeError:
-                    # If JSON parsing fails, try CSV format (legacy)
-                    if isinstance(item['tags'], str):
-                        item['tags'] = [tag.strip() for tag in item['tags'].split(',') if tag.strip()]
-                    else:
-                        item['tags'] = []
-            else:
-                item['tags'] = []
+
+            # Load tags from relational structure (tags and item_tags tables)
+            item['tags'] = self.get_tags_by_item(item['id'])
 
             # Decrypt sensitive content
             if item.get('is_sensitive') and item.get('content'):
-                from core.encryption_manager import EncryptionManager
+                from src.core.encryption_manager import EncryptionManager
                 encryption_manager = EncryptionManager()
                 try:
                     item['content'] = encryption_manager.decrypt(item['content'])
@@ -962,7 +941,7 @@ class DBManager:
 
             # Decrypt sensitive content if needed
             if item.get('is_sensitive') and item.get('content'):
-                from core.encryption_manager import EncryptionManager
+                from src.core.encryption_manager import EncryptionManager
                 encryption_manager = EncryptionManager()
                 try:
                     item['content'] = encryption_manager.decrypt(item['content'])
@@ -1010,7 +989,7 @@ class DBManager:
         results = self.execute_query(query, tuple(params)) if params else self.execute_query(query)
 
         # Initialize encryption manager for decrypting sensitive items
-        from core.encryption_manager import EncryptionManager
+        from src.core.encryption_manager import EncryptionManager
         encryption_manager = EncryptionManager()
 
         # Parse tags and decrypt sensitive content
@@ -1094,25 +1073,34 @@ class DBManager:
         """
         # Encrypt content if sensitive
         if is_sensitive and content:
-            from core.encryption_manager import EncryptionManager
+            from src.core.encryption_manager import EncryptionManager
             encryption_manager = EncryptionManager()
             content = encryption_manager.encrypt(content)
             logger.info(f"Content encrypted for sensitive item: {label}")
 
-        tags_json = json.dumps(tags or [])
+        # NOTE: tags parameter is still accepted for backwards compatibility
+        # but now we use relational structure instead of JSON
+        tags_to_create = tags or []
+
         component_config_json = json.dumps(component_config or {})
 
         query = """
             INSERT INTO items
-            (category_id, label, content, type, icon, is_sensitive, is_favorite, tags, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista, is_component, name_component, component_config, file_size, file_type, file_extension, original_filename, file_hash, preview_url, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            (category_id, label, content, type, icon, is_sensitive, is_favorite, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista, is_component, name_component, component_config, file_size, file_type, file_extension, original_filename, file_hash, preview_url, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """
         item_id = self.execute_update(
             query,
-            (category_id, label, content, item_type, icon, is_sensitive, is_favorite, tags_json, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista, is_component, name_component, component_config_json, file_size, file_type, file_extension, original_filename, file_hash, preview_url)
+            (category_id, label, content, item_type, icon, is_sensitive, is_favorite, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista, is_component, name_component, component_config_json, file_size, file_type, file_extension, original_filename, file_hash, preview_url)
         )
+
+        # Create tag relationships using relational structure
+        if tags_to_create:
+            self.set_item_tags(item_id, tags_to_create)
+
         list_info = f", List: {list_group}[{orden_lista}]" if is_list else ""
-        logger.info(f"Item added: {label} (ID: {item_id}, Sensitive: {is_sensitive}, Favorite: {is_favorite}, Active: {is_active}, Archived: {is_archived}{list_info})")
+        tags_info = f", Tags: {len(tags_to_create)}" if tags_to_create else ""
+        logger.info(f"Item added: {label} (ID: {item_id}, Sensitive: {is_sensitive}, Favorite: {is_favorite}, Active: {is_active}, Archived: {is_archived}{list_info}{tags_info})")
         return item_id
 
     def update_item(self, item_id: int, **kwargs) -> None:
@@ -1123,7 +1111,7 @@ class DBManager:
             item_id: Item ID to update
             **kwargs: Fields to update (label, content, type, icon, is_sensitive, is_favorite, tags, description, working_dir, color, badge, is_active, is_archived, is_list, list_group, orden_lista, file_size, file_type, file_extension, original_filename, file_hash, preview_url)
         """
-        allowed_fields = ['label', 'content', 'type', 'icon', 'is_sensitive', 'is_favorite', 'tags', 'description', 'working_dir', 'color', 'badge', 'is_active', 'is_archived', 'is_list', 'list_group', 'orden_lista', 'file_size', 'file_type', 'file_extension', 'original_filename', 'file_hash', 'preview_url']
+        allowed_fields = ['label', 'content', 'type', 'icon', 'is_sensitive', 'is_favorite', 'description', 'working_dir', 'color', 'badge', 'is_active', 'is_archived', 'is_list', 'list_group', 'orden_lista', 'file_size', 'file_type', 'file_extension', 'original_filename', 'file_hash', 'preview_url']
         updates = []
         params = []
 
@@ -1137,14 +1125,16 @@ class DBManager:
         is_currently_sensitive = current_item.get('is_sensitive', False)
         will_be_sensitive = kwargs.get('is_sensitive', is_currently_sensitive)
 
+        # Handle tags separately using relational structure
+        tags_to_update = None
+        if 'tags' in kwargs:
+            tags_to_update = kwargs.pop('tags')  # Remove from kwargs to handle separately
+
         for field, value in kwargs.items():
             if field in allowed_fields:
-                # Handle tags serialization
-                if field == 'tags':
-                    value = json.dumps(value)
                 # Handle content encryption for sensitive items
-                elif field == 'content' and will_be_sensitive and value:
-                    from core.encryption_manager import EncryptionManager
+                if field == 'content' and will_be_sensitive and value:
+                    from src.core.encryption_manager import EncryptionManager
                     encryption_manager = EncryptionManager()
                     # Only encrypt if not already encrypted
                     if not encryption_manager.is_encrypted(value):
@@ -1161,13 +1151,30 @@ class DBManager:
             self.execute_update(query, tuple(params))
             logger.info(f"Item updated: ID {item_id}")
 
+        # Update tags using relational structure
+        if tags_to_update is not None:
+            self.set_item_tags(item_id, tags_to_update)
+            logger.debug(f"Tags updated for item {item_id}")
+
     def delete_item(self, item_id: int) -> None:
         """
-        Delete item
+        Delete item and update tag usage_count
 
         Args:
             item_id: Item ID to delete
         """
+        # Update usage_count for all tags associated with this item
+        # (CASCADE will delete item_tags, but we need to update usage_count manually)
+        query = """
+            UPDATE tags
+            SET usage_count = MAX(0, usage_count - 1)
+            WHERE id IN (
+                SELECT tag_id FROM item_tags WHERE item_id = ?
+            )
+        """
+        self.execute_update(query, (item_id,))
+
+        # Delete item (CASCADE will remove item_tags relationships)
         query = "DELETE FROM items WHERE id = ?"
         self.execute_update(query, (item_id,))
         logger.info(f"Item deleted: ID {item_id}")
@@ -1208,24 +1215,13 @@ class DBManager:
         results = self.execute_query(query, (include_inactive,))
 
         # Initialize encryption manager for decrypting sensitive items
-        from core.encryption_manager import EncryptionManager
+        from src.core.encryption_manager import EncryptionManager
         encryption_manager = EncryptionManager()
 
-        # Parse tags and decrypt sensitive content
+        # Load tags from relational structure and decrypt sensitive content
         for item in results:
-            # Parse tags from JSON or CSV format
-            if item['tags']:
-                try:
-                    # Try to parse as JSON first
-                    item['tags'] = json.loads(item['tags'])
-                except json.JSONDecodeError:
-                    # If JSON parsing fails, try CSV format (legacy)
-                    if isinstance(item['tags'], str):
-                        item['tags'] = [tag.strip() for tag in item['tags'].split(',') if tag.strip()]
-                    else:
-                        item['tags'] = []
-            else:
-                item['tags'] = []
+            # Load tags from relational structure (tags and item_tags tables)
+            item['tags'] = self.get_tags_by_item(item['id'])
 
             # Decrypt sensitive content
             if item.get('is_sensitive') and item.get('content'):
@@ -1240,7 +1236,7 @@ class DBManager:
 
     def search_items(self, search_query: str, limit: int = 50) -> List[Dict]:
         """
-        Search items by label or content
+        Search items by label, content, or tags (using relational structure)
 
         Args:
             search_query: Search text
@@ -1249,36 +1245,402 @@ class DBManager:
         Returns:
             List[Dict]: List of matching items with category name
         """
+        search_pattern = f"%{search_query}%"
+
+        # Search in items (label, content) + tags (via JOIN)
         query = """
-            SELECT i.*, c.name as category_name
+            SELECT DISTINCT i.*, c.name as category_name
             FROM items i
             JOIN categories c ON i.category_id = c.id
-            WHERE i.label LIKE ? OR i.content LIKE ? OR i.tags LIKE ?
+            LEFT JOIN item_tags it ON i.id = it.item_id
+            LEFT JOIN tags t ON it.tag_id = t.id
+            WHERE i.label LIKE ? OR i.content LIKE ? OR t.name LIKE ?
             ORDER BY i.last_used DESC
             LIMIT ?
         """
-        search_pattern = f"%{search_query}%"
         results = self.execute_query(
             query,
             (search_pattern, search_pattern, search_pattern, limit)
         )
 
-        # Parse tags
+        # Load tags from relational structure for each item
         for item in results:
-            if item['tags']:
-                try:
-                    # Try to parse as JSON first
-                    item['tags'] = json.loads(item['tags'])
-                except json.JSONDecodeError:
-                    # If JSON parsing fails, try CSV format (legacy)
-                    if isinstance(item['tags'], str):
-                        item['tags'] = [tag.strip() for tag in item['tags'].split(',') if tag.strip()]
-                    else:
-                        item['tags'] = []
-            else:
-                item['tags'] = []
+            item['tags'] = self.get_tags_by_item(item['id'])
 
         return results
+
+    # ========== TAGS MANAGEMENT (Relational) ==========
+
+    def get_or_create_tag(self, tag_name: str) -> int:
+        """
+        Get tag ID by name, create if doesn't exist (UNIQUE constraint)
+
+        Args:
+            tag_name: Tag name (will be normalized to lowercase)
+
+        Returns:
+            int: Tag ID
+        """
+        # Normalize tag name (lowercase, strip)
+        tag_name_normalized = tag_name.strip().lower()
+
+        if not tag_name_normalized:
+            raise ValueError("Tag name cannot be empty")
+
+        # Try to get existing tag
+        query = "SELECT id FROM tags WHERE name = ?"
+        result = self.execute_query(query, (tag_name_normalized,))
+
+        if result:
+            return result[0]['id']
+
+        # Create new tag
+        query = """
+            INSERT INTO tags (name, usage_count, created_at, updated_at)
+            VALUES (?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """
+        tag_id = self.execute_update(query, (tag_name_normalized,))
+        logger.debug(f"Tag created: '{tag_name_normalized}' (ID: {tag_id})")
+        return tag_id
+
+    def get_all_tags(self, order_by: str = 'name') -> List[Dict]:
+        """
+        Get all tags
+
+        Args:
+            order_by: Order by field ('name', 'usage_count', 'created_at')
+
+        Returns:
+            List[Dict]: List of tag dictionaries
+        """
+        allowed_orders = ['name', 'usage_count', 'created_at', 'updated_at']
+        if order_by not in allowed_orders:
+            order_by = 'name'
+
+        # For usage_count, order DESC to show most used first
+        order_direction = 'DESC' if order_by == 'usage_count' else 'ASC'
+
+        query = f"SELECT * FROM tags ORDER BY {order_by} {order_direction}"
+        return self.execute_query(query)
+
+    def get_tag_by_id(self, tag_id: int) -> Optional[Dict]:
+        """
+        Get tag by ID
+
+        Args:
+            tag_id: Tag ID
+
+        Returns:
+            Optional[Dict]: Tag dictionary or None
+        """
+        query = "SELECT * FROM tags WHERE id = ?"
+        result = self.execute_query(query, (tag_id,))
+        return result[0] if result else None
+
+    def get_tag_by_name(self, tag_name: str) -> Optional[Dict]:
+        """
+        Get tag by name
+
+        Args:
+            tag_name: Tag name (case-insensitive)
+
+        Returns:
+            Optional[Dict]: Tag dictionary or None
+        """
+        tag_name_normalized = tag_name.strip().lower()
+        query = "SELECT * FROM tags WHERE name = ?"
+        result = self.execute_query(query, (tag_name_normalized,))
+        return result[0] if result else None
+
+    def update_tag(self, tag_id: int, **kwargs) -> None:
+        """
+        Update tag fields
+
+        Args:
+            tag_id: Tag ID
+            **kwargs: Fields to update (name, color, description)
+        """
+        allowed_fields = ['name', 'color', 'description']
+        updates = []
+        params = []
+
+        for field, value in kwargs.items():
+            if field in allowed_fields:
+                # Normalize name if updating
+                if field == 'name' and value:
+                    value = value.strip().lower()
+
+                updates.append(f"{field} = ?")
+                params.append(value)
+
+        if updates:
+            updates.append("updated_at = CURRENT_TIMESTAMP")
+            params.append(tag_id)
+            query = f"UPDATE tags SET {', '.join(updates)} WHERE id = ?"
+            self.execute_update(query, tuple(params))
+            logger.info(f"Tag updated: ID {tag_id}")
+
+    def delete_tag(self, tag_id: int) -> None:
+        """
+        Delete tag (CASCADE will remove item_tags relationships)
+
+        Args:
+            tag_id: Tag ID to delete
+        """
+        query = "DELETE FROM tags WHERE id = ?"
+        self.execute_update(query, (tag_id,))
+        logger.info(f"Tag deleted: ID {tag_id} (CASCADE removed item relationships)")
+
+    def get_tags_by_item(self, item_id: int) -> List[str]:
+        """
+        Get all tag names for an item
+
+        Args:
+            item_id: Item ID
+
+        Returns:
+            List[str]: List of tag names (sorted alphabetically)
+        """
+        query = """
+            SELECT t.name
+            FROM item_tags it
+            JOIN tags t ON it.tag_id = t.id
+            WHERE it.item_id = ?
+            ORDER BY t.name
+        """
+        results = self.execute_query(query, (item_id,))
+        return [row['name'] for row in results]
+
+    def add_tag_to_item(self, item_id: int, tag_name: str) -> None:
+        """
+        Add tag to item (get_or_create tag)
+
+        Args:
+            item_id: Item ID
+            tag_name: Tag name (will be normalized)
+        """
+        # Get or create tag
+        tag_id = self.get_or_create_tag(tag_name)
+
+        # Check if relationship already exists
+        query = "SELECT 1 FROM item_tags WHERE item_id = ? AND tag_id = ?"
+        exists = self.execute_query(query, (item_id, tag_id))
+
+        if exists:
+            logger.debug(f"Tag '{tag_name}' already associated with item {item_id}")
+            return
+
+        # Create relationship
+        query = """
+            INSERT INTO item_tags (item_id, tag_id, created_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+        """
+        self.execute_update(query, (item_id, tag_id))
+
+        # Update usage_count and last_used
+        query = """
+            UPDATE tags
+            SET usage_count = usage_count + 1,
+                last_used = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """
+        self.execute_update(query, (tag_id,))
+
+        logger.debug(f"Tag '{tag_name}' added to item {item_id}")
+
+    def remove_tag_from_item(self, item_id: int, tag_name: str) -> None:
+        """
+        Remove tag from item
+
+        Args:
+            item_id: Item ID
+            tag_name: Tag name
+        """
+        # Get tag by name
+        tag = self.get_tag_by_name(tag_name)
+        if not tag:
+            logger.warning(f"Tag '{tag_name}' not found")
+            return
+
+        tag_id = tag['id']
+
+        # Delete relationship
+        query = "DELETE FROM item_tags WHERE item_id = ? AND tag_id = ?"
+        self.execute_update(query, (item_id, tag_id))
+
+        # Update usage_count (decrement)
+        query = """
+            UPDATE tags
+            SET usage_count = MAX(0, usage_count - 1)
+            WHERE id = ?
+        """
+        self.execute_update(query, (tag_id,))
+
+        logger.debug(f"Tag '{tag_name}' removed from item {item_id}")
+
+    def set_item_tags(self, item_id: int, tag_names: List[str]) -> None:
+        """
+        Set all tags for an item (replaces existing tags)
+
+        Args:
+            item_id: Item ID
+            tag_names: List of tag names
+        """
+        # Get current tags
+        current_tags = set(self.get_tags_by_item(item_id))
+        new_tags = set([tag.strip().lower() for tag in tag_names if tag.strip()])
+
+        # Calculate differences
+        tags_to_add = new_tags - current_tags
+        tags_to_remove = current_tags - new_tags
+
+        # Remove old tags
+        for tag_name in tags_to_remove:
+            self.remove_tag_from_item(item_id, tag_name)
+
+        # Add new tags
+        for tag_name in tags_to_add:
+            self.add_tag_to_item(item_id, tag_name)
+
+        logger.debug(f"Tags updated for item {item_id}: {len(tags_to_add)} added, {len(tags_to_remove)} removed")
+
+    def get_items_by_tag(self, tag_name: str) -> List[Dict]:
+        """
+        Get all items with a specific tag
+
+        Args:
+            tag_name: Tag name
+
+        Returns:
+            List[Dict]: List of item dictionaries with category info
+        """
+        tag_name_normalized = tag_name.strip().lower()
+
+        query = """
+            SELECT i.*, c.name as category_name
+            FROM items i
+            JOIN item_tags it ON i.id = it.item_id
+            JOIN tags t ON it.tag_id = t.id
+            JOIN categories c ON i.category_id = c.id
+            WHERE t.name = ?
+            ORDER BY i.last_used DESC
+        """
+        results = self.execute_query(query, (tag_name_normalized,))
+
+        # Load tags for each item
+        for item in results:
+            item['tags'] = self.get_tags_by_item(item['id'])
+
+        return results
+
+    def search_tags(self, query: str) -> List[Dict]:
+        """
+        Search tags by name
+
+        Args:
+            query: Search query (partial match)
+
+        Returns:
+            List[Dict]: List of matching tags
+        """
+        search_pattern = f"%{query.lower()}%"
+        sql_query = """
+            SELECT * FROM tags
+            WHERE name LIKE ?
+            ORDER BY usage_count DESC, name ASC
+        """
+        return self.execute_query(sql_query, (search_pattern,))
+
+    def get_tag_statistics(self) -> Dict:
+        """
+        Get tag statistics
+
+        Returns:
+            Dict: Statistics about tags
+        """
+        # Total tags
+        query = "SELECT COUNT(*) as total FROM tags"
+        total_tags = self.execute_query(query)[0]['total']
+
+        # Tags in use (usage_count > 0)
+        query = "SELECT COUNT(*) as in_use FROM tags WHERE usage_count > 0"
+        tags_in_use = self.execute_query(query)[0]['in_use']
+
+        # Unused tags
+        query = "SELECT COUNT(*) as unused FROM tags WHERE usage_count = 0"
+        unused_tags = self.execute_query(query)[0]['unused']
+
+        # Average tags per item
+        query = """
+            SELECT AVG(tag_count) as avg_tags
+            FROM (
+                SELECT item_id, COUNT(*) as tag_count
+                FROM item_tags
+                GROUP BY item_id
+            )
+        """
+        result = self.execute_query(query)
+        avg_tags = result[0]['avg_tags'] if result and result[0]['avg_tags'] else 0
+
+        # Top 10 most used tags
+        query = """
+            SELECT name, usage_count
+            FROM tags
+            WHERE usage_count > 0
+            ORDER BY usage_count DESC, name ASC
+            LIMIT 10
+        """
+        top_tags = self.execute_query(query)
+
+        return {
+            'total_tags': total_tags,
+            'tags_in_use': tags_in_use,
+            'unused_tags': unused_tags,
+            'avg_tags_per_item': round(avg_tags, 2) if avg_tags else 0,
+            'top_tags': [{'name': t['name'], 'count': t['usage_count']} for t in top_tags]
+        }
+
+    def get_tag_stats(self, tag_name: str) -> Dict:
+        """
+        Get statistics for a specific tag
+
+        Args:
+            tag_name: Tag name
+
+        Returns:
+            Dict: Tag statistics (id, name, usage_count, last_used, etc.)
+        """
+        tag = self.get_tag_by_name(tag_name)
+        if not tag:
+            return {
+                'id': None,
+                'name': tag_name.lower(),
+                'usage_count': 0,
+                'last_used': None,
+                'created_at': None,
+                'updated_at': None,
+                'color': None,
+                'description': None
+            }
+        return tag
+
+    def get_top_tags(self, limit: int = 10) -> List[Dict]:
+        """
+        Get top tags by usage count
+
+        Args:
+            limit: Maximum number of tags to return (default: 10)
+
+        Returns:
+            List[Dict]: List of tags ordered by usage_count DESC
+        """
+        query = """
+            SELECT * FROM tags
+            WHERE usage_count > 0
+            ORDER BY usage_count DESC, name ASC
+            LIMIT ?
+        """
+        return self.execute_query(query, (limit,))
 
     # ========== LISTAS AVANZADAS ==========
 
@@ -1396,7 +1758,7 @@ class DBManager:
         results = self.execute_query(query, (category_id, list_group))
 
         # Desencriptar y parsear tags (mismo proceso que en get_items_by_category)
-        from core.encryption_manager import EncryptionManager
+        from src.core.encryption_manager import EncryptionManager
         encryption_manager = EncryptionManager()
 
         for item in results:
@@ -3442,7 +3804,7 @@ class DBManager:
                             # Cifrar contenido si es sensible
                             content_to_store = str(cell_value)
                             if is_sensitive and content_to_store:
-                                from core.encryption_manager import EncryptionManager
+                                from src.core.encryption_manager import EncryptionManager
                                 encryption_manager = EncryptionManager()
                                 content_to_store = encryption_manager.encrypt(content_to_store)
                                 logger.debug(f"Content encrypted for sensitive column '{column_name}' at [{row_idx}, {col_idx}]")

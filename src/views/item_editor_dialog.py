@@ -1031,7 +1031,7 @@ class ItemEditorDialog(QDialog):
                     self.controller.invalidate_filter_cache()
 
                 # Emitir señal de item actualizado
-                self.item_updated.emit(str(self.item.id), str(self.item.category_id))
+                self.item_updated.emit(str(self.item.id), str(self.category_id))
 
                 self.accept()
 

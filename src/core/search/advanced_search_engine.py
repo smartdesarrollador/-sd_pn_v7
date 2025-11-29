@@ -258,12 +258,17 @@ class AdvancedSearchEngine:
         where_clauses = ["i.is_active = 1"]
         params = []
 
-        # Text search in label, content, tags
+        # Text search in label, content, and tags (relational structure)
         search_pattern = f"%{query}%"
         where_clauses.append("""
             (LOWER(i.label) LIKE LOWER(?)
              OR LOWER(i.content) LIKE LOWER(?)
-             OR LOWER(i.tags) LIKE LOWER(?))
+             OR EXISTS (
+                 SELECT 1 FROM item_tags it
+                 JOIN tags t ON it.tag_id = t.id
+                 WHERE it.item_id = i.id
+                 AND LOWER(t.name) LIKE LOWER(?)
+             ))
         """)
         params.extend([search_pattern, search_pattern, search_pattern])
 
@@ -326,7 +331,6 @@ class AdvancedSearchEngine:
                     i.label,
                     i.content,
                     i.type,
-                    i.tags,
                     i.description,
                     i.is_favorite,
                     i.is_sensitive,
@@ -345,9 +349,9 @@ class AdvancedSearchEngine:
 
             execution_time = (time.time() - start_time) * 1000
 
-            # Convert to dicts
+            # Convert to dicts (removed 'tags' from columns)
             columns = [
-                'id', 'category_id', 'label', 'content', 'type', 'tags', 'description',
+                'id', 'category_id', 'label', 'content', 'type', 'description',
                 'is_favorite', 'is_sensitive', 'use_count', 'last_used', 'created_at',
                 'category_name', 'category_icon', 'rank_score'
             ]
@@ -355,6 +359,8 @@ class AdvancedSearchEngine:
             results_list = []
             for row in results:
                 result_dict = dict(zip(columns, row))
+                # Load tags from relational structure
+                result_dict['tags'] = self.db.get_tags_by_item(result_dict['id'])
                 results_list.append(result_dict)
 
             logger.info(f"Exact search: '{query}' -> {len(results_list)} results in {execution_time:.2f}ms")

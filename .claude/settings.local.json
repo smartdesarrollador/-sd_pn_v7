@@ -56,7 +56,9 @@
       "Bash(utilschema_output.txt)",
       "Bash(tasklist /FI \"IMAGENAME eq python.exe\")",
       "Bash(start python:*)",
-      "Bash(if not exist \"src\\views\\image_gallery\" mkdir \"src\\views\\image_gallery\")"
+      "Bash(if not exist \"src\\views\\image_gallery\" mkdir \"src\\views\\image_gallery\")",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

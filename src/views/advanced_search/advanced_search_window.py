@@ -640,14 +640,18 @@ class AdvancedSearchWindow(QWidget):
         excluded_count = 0
 
         for result in results:
-            tags_str = result.get('tags', '')
-            if not tags_str:
+            tags = result.get('tags', [])
+            if not tags:
                 # Items without tags are excluded when tag filter is active
                 excluded_count += 1
                 continue
 
-            # Split item tags and check if any match selected tags
-            item_tags = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+            # Tags are already a list (relational structure)
+            if isinstance(tags, list):
+                item_tags = tags
+            else:
+                # Fallback for legacy format (CSV string)
+                item_tags = [tag.strip() for tag in tags.split(',') if tag.strip()]
 
             # Check if this item has any of the selected tags
             has_selected_tag = any(tag in selected_tags for tag in item_tags)
