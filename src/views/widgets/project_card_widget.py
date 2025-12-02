@@ -12,7 +12,7 @@ en un grid responsive. Incluye:
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QFrame, QPushButton, QGraphicsDropShadowEffect,
-                             QGraphicsOpacityEffect)
+                             QGraphicsOpacityEffect, QMessageBox)
 from PyQt6.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QSize, QTimer, QRect
 from PyQt6.QtGui import QCursor, QColor, QPainter, QPen, QFont
 import logging
@@ -70,9 +70,9 @@ class ProjectCardWidget(QWidget):
         # Guardar el nombre original completo para copiar
         self.original_name = item_data.get('name', item_data.get('content', ''))
 
-        # Configurar tamaño fijo de la card
-        self.setFixedSize(280, 160)
-        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        # Configurar tamaño fijo de la card (aumentado de 160 a 180)
+        self.setFixedSize(280, 180)
+        # NO configurar cursor aquí - el botón tendrá su propio cursor
 
         self.init_ui()
         self.setup_shadow_effect()
@@ -135,22 +135,46 @@ class ProjectCardWidget(QWidget):
         icon_label.setFixedSize(32, 32)
         header_layout.addWidget(icon_label)
 
-        # Nombre del elemento
+        # Nombre del elemento como botón clickeable
         name = self.item_data.get('name', self.item_data.get('content', 'Sin nombre'))
-        # Truncar nombre largo
+        # Truncar nombre largo para mostrar
+        display_name = name
         if len(name) > 25:
-            name = name[:22] + '...'
+            display_name = name[:22] + '...'
 
-        name_label = QLabel(name)
-        name_label.setWordWrap(True)
-        name_label.setStyleSheet("""
-            QLabel {
+        self.name_button = QPushButton(display_name)
+        self.name_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.name_button.setToolTip(f"Click para copiar: {name}")
+        self.name_button.clicked.connect(self._on_name_button_clicked)
+
+        # Ajustar altura mínima para evitar texto cortado
+        self.name_button.setMinimumHeight(32)
+        self.name_button.setMaximumHeight(40)
+
+        # Color del borde según tipo
+        border_color = self.TYPE_COLORS.get(self.item_type, '#555555')
+
+        self.name_button.setStyleSheet(f"""
+            QPushButton {{
                 color: #ffffff;
-                font-size: 11pt;
+                font-size: 10pt;
                 font-weight: bold;
-            }
+                background-color: #1e1e1e;
+                border: 2px solid {border_color};
+                border-radius: 8px;
+                padding: 8px 12px;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                background-color: {border_color}30;
+                border: 2px solid #ffffff;
+            }}
+            QPushButton:pressed {{
+                background-color: {border_color}50;
+                border: 3px solid {border_color};
+            }}
         """)
-        header_layout.addWidget(name_label, 1)
+        header_layout.addWidget(self.name_button, 1)
 
         # Badge de tipo - Más grande y distintivo para componentes
         is_component = self.item_type in ['comment', 'alert', 'note', 'divider']
@@ -198,28 +222,57 @@ class ProjectCardWidget(QWidget):
         separator.setStyleSheet(f"background-color: {border_color}; max-height: 1px;")
         card_layout.addWidget(separator)
 
-        # Descripción / Preview
+        # Descripción / Preview - Ahora como botón clickeable
         description = self.item_data.get('description', '')
         content = self.item_data.get('content', '')
 
-        preview_text = description if description else content
+        # Guardar texto completo para mostrar en diálogo
+        self.full_description = description if description else content
 
-        # Truncar preview
+        # Texto truncado para preview
+        preview_text = self.full_description
         if preview_text and len(preview_text) > 100:
             preview_text = preview_text[:97] + '...'
 
-        preview_label = QLabel(preview_text or "Sin descripción")
-        preview_label.setWordWrap(True)
-        preview_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        preview_label.setStyleSheet("""
-            QLabel {
+        # Usar QPushButton en lugar de QLabel para hacerlo clickeable
+        self.preview_button = QPushButton(preview_text or "Sin descripción")
+        # QPushButton NO tiene setWordWrap - el texto se ajustará con el estilo CSS
+        self.preview_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.preview_button.clicked.connect(self._show_full_description)
+
+        # Tooltip para indicar que es clickeable
+        if self.full_description and len(self.full_description) > 100:
+            self.preview_button.setToolTip("🔍 Click para ver descripción completa")
+
+        # Configurar para que el texto se ajuste con word-wrap en CSS
+        self.preview_button.setSizePolicy(
+            self.preview_button.sizePolicy().horizontalPolicy(),
+            self.preview_button.sizePolicy().verticalPolicy()
+        )
+
+        self.preview_button.setStyleSheet("""
+            QPushButton {
                 color: #aaaaaa;
                 font-size: 9pt;
                 font-style: italic;
+                background-color: transparent;
+                border: 1px dashed #555555;
+                border-radius: 4px;
+                padding: 6px;
+                text-align: left;
+                qproperty-wordWrap: true;
+            }
+            QPushButton:hover {
+                background-color: #333333;
+                border: 1px dashed #777777;
+                color: #cccccc;
+            }
+            QPushButton:pressed {
+                background-color: #444444;
             }
         """)
-        preview_label.setMinimumHeight(40)
-        card_layout.addWidget(preview_label, 1)
+        self.preview_button.setMinimumHeight(40)
+        card_layout.addWidget(self.preview_button, 1)
 
         # Tags (si existen)
         if 'tags' in self.item_data and self.item_data['tags']:
@@ -345,16 +398,71 @@ class ProjectCardWidget(QWidget):
 
         super().leaveEvent(event)
 
+    def _on_name_button_clicked(self):
+        """Callback cuando se hace click en el botón del nombre"""
+        # Emitir señal con el nombre original (sin truncar)
+        self.clicked.emit(self.original_name)
+        logger.info(f"Name button clicked - Copying to clipboard: {self.original_name}")
+
+        # Mostrar feedback visual
+        self.show_copy_feedback()
+
+    def _show_full_description(self):
+        """Muestra la descripción completa en un diálogo"""
+        if not self.full_description:
+            return
+
+        # Crear diálogo personalizado
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(f"📝 Descripción - {self.original_name}")
+        dialog.setText(self.full_description)
+        dialog.setIcon(QMessageBox.Icon.Information)
+
+        # Botón para copiar descripción
+        copy_button = dialog.addButton("📋 Copiar", QMessageBox.ButtonRole.ActionRole)
+        dialog.addButton("Cerrar", QMessageBox.ButtonRole.AcceptRole)
+
+        # Estilo oscuro para el diálogo
+        dialog.setStyleSheet("""
+            QMessageBox {
+                background-color: #2d2d2d;
+            }
+            QLabel {
+                color: #ffffff;
+                font-size: 10pt;
+                padding: 10px;
+                min-width: 400px;
+            }
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #5dade2;
+            }
+            QPushButton:pressed {
+                background-color: #2980b9;
+            }
+        """)
+
+        # Mostrar diálogo
+        result = dialog.exec()
+
+        # Si se hizo click en copiar
+        if dialog.clickedButton() == copy_button:
+            from PyQt6.QtWidgets import QApplication
+            QApplication.clipboard().setText(self.full_description)
+            logger.info(f"Description copied to clipboard")
+
     def mousePressEvent(self, event):
-        """Al hacer clic en la card"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            # Emitir señal con el nombre original (sin truncar, sin icono)
-            self.clicked.emit(self.original_name)
-            logger.info(f"Card clicked - Copying to clipboard: {self.original_name}")
-
-            # Mostrar indicador de copiado
-            self.show_copy_feedback()
-
+        """Al hacer clic en la card - DESHABILITADO"""
+        # Ya NO copiamos al hacer click en la card completa
+        # Solo el botón del nombre copia al portapapeles
         super().mousePressEvent(event)
 
     def show_copy_feedback(self):
@@ -363,7 +471,21 @@ class ProjectCardWidget(QWidget):
         self.show_copied_indicator = True
         self.update()  # Forzar repaint
 
-        # Cambiar color del borde Y FONDO temporalmente
+        # Cambiar estilo del BOTÓN temporalmente
+        self.name_button.setStyleSheet(f"""
+            QPushButton {{
+                color: #000000;
+                font-size: 10pt;
+                font-weight: bold;
+                background-color: #00ff88;
+                border: 3px solid #00ff88;
+                border-radius: 8px;
+                padding: 6px 12px;
+                text-align: left;
+            }}
+        """)
+
+        # Cambiar color del borde de la card
         border_color = self.TYPE_COLORS.get(self.item_type, '#555555')
         self.card_frame.setStyleSheet(f"""
             QFrame#cardFrame {{
@@ -389,6 +511,28 @@ class ProjectCardWidget(QWidget):
 
         # Restaurar estilo original
         border_color = self.TYPE_COLORS.get(self.item_type, '#555555')
+
+        # Restaurar estilo del BOTÓN
+        self.name_button.setStyleSheet(f"""
+            QPushButton {{
+                color: #ffffff;
+                font-size: 10pt;
+                font-weight: bold;
+                background-color: #1e1e1e;
+                border: 2px solid {border_color};
+                border-radius: 8px;
+                padding: 8px 12px;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                background-color: {border_color}30;
+                border: 2px solid #ffffff;
+            }}
+            QPushButton:pressed {{
+                background-color: {border_color}50;
+                border: 3px solid {border_color};
+            }}
+        """)
 
         # Detectar si es componente para restaurar color correcto
         is_component = self.item_type in ['comment', 'alert', 'note', 'divider']
