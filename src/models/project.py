@@ -9,7 +9,11 @@ Modelos:
 
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
+
+# Evitar import circular usando TYPE_CHECKING
+if TYPE_CHECKING:
+    from .project_element_tag import ProjectElementTag
 
 
 @dataclass
@@ -60,6 +64,16 @@ class ProjectRelation:
 
     Representa la asociación entre un proyecto y una entidad
     (tag, proceso, lista, tabla, categoría o item).
+
+    Attributes:
+        id: Identificador único de la relación
+        project_id: ID del proyecto al que pertenece
+        entity_type: Tipo de entidad relacionada
+        entity_id: ID de la entidad relacionada
+        description: Descripción contextual del elemento
+        order_index: Orden de visualización en el proyecto
+        created_at: Fecha de creación
+        tags: Lista de tags asociados a esta relación (NUEVO)
     """
     id: int
     project_id: int
@@ -68,6 +82,7 @@ class ProjectRelation:
     description: str = ""  # Descripción contextual del elemento en el proyecto
     order_index: int = 0
     created_at: Optional[datetime] = None
+    tags: List['ProjectElementTag'] = field(default_factory=list)  # NUEVO
 
     # Tipos de entidad válidos
     VALID_ENTITY_TYPES = {'tag', 'process', 'list', 'table', 'category', 'item'}
@@ -80,22 +95,120 @@ class ProjectRelation:
                 f"Debe ser uno de: {', '.join(self.VALID_ENTITY_TYPES)}"
             )
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convierte la relación a diccionario"""
+    def to_dict(self, include_tags: bool = True) -> Dict[str, Any]:
+        """
+        Convierte la relación a diccionario
+
+        Args:
+            include_tags: Si True, incluye la lista de tags en el diccionario
+
+        Returns:
+            Diccionario con datos de la relación
+        """
         data = asdict(self)
+
+        # Convertir datetime
         if self.created_at:
             data['created_at'] = self.created_at.isoformat()
+
+        # Convertir tags a lista de diccionarios
+        if include_tags and self.tags:
+            data['tags'] = [tag.to_dict() for tag in self.tags]
+        elif not include_tags:
+            data.pop('tags', None)
+
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ProjectRelation':
-        """Crea una relación desde un diccionario"""
+    def from_dict(cls, data: Dict[str, Any], include_tags: bool = True) -> 'ProjectRelation':
+        """
+        Crea una relación desde un diccionario
+
+        Args:
+            data: Diccionario con datos de la relación
+            include_tags: Si True, carga los tags desde el diccionario
+
+        Returns:
+            Instancia de ProjectRelation
+        """
+        # Convertir strings ISO a datetime
         if 'created_at' in data and isinstance(data['created_at'], str):
             data['created_at'] = datetime.fromisoformat(data['created_at'])
+
+        # Convertir lista de tags si existe
+        if include_tags and 'tags' in data and data['tags']:
+            from .project_element_tag import ProjectElementTag
+            data['tags'] = [ProjectElementTag.from_dict(tag_data) for tag_data in data['tags']]
+        else:
+            data.pop('tags', None)
+
         return cls(**data)
 
+    def add_tag(self, tag: 'ProjectElementTag') -> None:
+        """
+        Agrega un tag a esta relación
+
+        Args:
+            tag: Tag a agregar
+        """
+        if tag not in self.tags:
+            self.tags.append(tag)
+
+    def remove_tag(self, tag: 'ProjectElementTag') -> None:
+        """
+        Remueve un tag de esta relación
+
+        Args:
+            tag: Tag a remover
+        """
+        if tag in self.tags:
+            self.tags.remove(tag)
+
+    def remove_tag_by_id(self, tag_id: int) -> None:
+        """
+        Remueve un tag por su ID
+
+        Args:
+            tag_id: ID del tag a remover
+        """
+        self.tags = [tag for tag in self.tags if tag.id != tag_id]
+
+    def has_tag(self, tag: 'ProjectElementTag') -> bool:
+        """
+        Verifica si esta relación tiene un tag específico
+
+        Args:
+            tag: Tag a verificar
+
+        Returns:
+            True si el tag está asociado
+        """
+        return tag in self.tags
+
+    def has_tag_by_id(self, tag_id: int) -> bool:
+        """
+        Verifica si esta relación tiene un tag por ID
+
+        Args:
+            tag_id: ID del tag a verificar
+
+        Returns:
+            True si el tag está asociado
+        """
+        return any(tag.id == tag_id for tag in self.tags)
+
+    def get_tag_ids(self) -> List[int]:
+        """
+        Obtiene los IDs de todos los tags asociados
+
+        Returns:
+            Lista de IDs de tags
+        """
+        return [tag.id for tag in self.tags]
+
     def __str__(self) -> str:
-        return f"ProjectRelation({self.entity_type}#{self.entity_id} -> Project#{self.project_id})"
+        tag_count = len(self.tags)
+        return f"ProjectRelation({self.entity_type}#{self.entity_id} -> Project#{self.project_id}, {tag_count} tags)"
 
 
 @dataclass

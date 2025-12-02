@@ -5,6 +5,7 @@ Permite seleccionar entidades existentes (tags, items, categorías, listas, tabl
 o crear nuevas directamente desde el diálogo.
 """
 
+from typing import List
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                              QLabel, QLineEdit, QListWidget, QListWidgetItem,
                              QMessageBox, QTextEdit, QWidget, QFrame)
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 class ProjectEntitySelector(QDialog):
     """Diálogo para seleccionar una entidad para agregar al proyecto"""
 
-    entity_selected = pyqtSignal(str, int, str)  # entity_type, entity_id, description
+    entity_selected = pyqtSignal(str, int, str, list)  # entity_type, entity_id, description, tag_ids
 
     def __init__(self, entity_type: str, db_manager, project_id: int = None, parent=None):
         """
@@ -100,6 +101,20 @@ class ProjectEntitySelector(QDialog):
         self.description_input.setPlaceholderText("Agrega un comentario o descripción para este elemento en el proyecto...")
         self.description_input.setMaximumHeight(80)
         layout.addWidget(self.description_input)
+
+        # Selector de tags
+        tags_label = QLabel("🏷️ Tags:")
+        tags_label.setStyleSheet("font-weight: bold; color: #00ff88;")
+        layout.addWidget(tags_label)
+
+        # Importar y crear selector de tags
+        from src.core.project_element_tag_manager import ProjectElementTagManager
+        from src.views.widgets.project_tag_selector import ProjectTagSelector
+
+        self.tag_manager = ProjectElementTagManager(self.db)
+        self.tag_selector = ProjectTagSelector(self.tag_manager)
+        self.tag_selector.setMaximumHeight(200)
+        layout.addWidget(self.tag_selector)
 
         # Preview del elemento seleccionado
         self.preview_frame = QFrame()
@@ -370,11 +385,12 @@ class ProjectEntitySelector(QDialog):
             return
 
         description = self.description_input.toPlainText().strip()
+        tag_ids = self.tag_selector.get_selected_tags()
 
-        # Emitir señal con la selección
-        self.entity_selected.emit(self.entity_type, self.selected_entity_id, description)
+        # Emitir señal con la selección (incluyendo tags)
+        self.entity_selected.emit(self.entity_type, self.selected_entity_id, description, tag_ids)
 
-        logger.info(f"Selected {self.entity_type} ID: {self.selected_entity_id}")
+        logger.info(f"Selected {self.entity_type} ID: {self.selected_entity_id} with {len(tag_ids)} tags")
         self.accept()
 
     def on_create_new(self):

@@ -465,6 +465,146 @@ def migration_003_create_tags_tables(db: DBManager) -> None:
         raise
 
 
+def migration_004_create_project_element_tags(db: DBManager) -> None:
+    """
+    Migración 004: Crear tablas project_element_tags y project_element_tag_associations
+
+    Esta migración:
+    1. Crea tabla 'project_element_tags' para tags específicos de elementos de proyecto
+    2. Crea tabla pivot 'project_element_tag_associations' para relación many-to-many
+    3. Crea índices para optimización de búsquedas
+
+    Args:
+        db: DBManager instance
+    """
+    try:
+        print("\n" + "=" * 80)
+        print("🔄 MIGRACIÓN 004: Creación de Tablas de Tags para Elementos de Proyecto")
+        print("=" * 80)
+
+        conn = db.connect()
+        cursor = conn.cursor()
+
+        # Verificar si las tablas ya existen
+        cursor.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='project_element_tags'
+        """)
+        tags_exists = cursor.fetchone() is not None
+
+        cursor.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='project_element_tag_associations'
+        """)
+        associations_exists = cursor.fetchone() is not None
+
+        if tags_exists and associations_exists:
+            print("⚠️  Las tablas ya existen.")
+            print("   Saltando creación de tablas...")
+            return
+
+        # Paso 1: Crear tabla project_element_tags
+        print("\n[1/3] Creando tabla 'project_element_tags'...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS project_element_tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                color TEXT DEFAULT '#3498db',
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        print("   ✓ Tabla 'project_element_tags' creada")
+
+        # Paso 2: Crear índices para tabla project_element_tags
+        print("   Creando índices para 'project_element_tags'...")
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_project_element_tags_name
+            ON project_element_tags(name)
+        """)
+        conn.commit()
+        print("   ✓ Índice creado: idx_project_element_tags_name")
+
+        # Paso 3: Crear tabla pivot project_element_tag_associations
+        print("\n[2/3] Creando tabla pivot 'project_element_tag_associations'...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS project_element_tag_associations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_relation_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_relation_id) REFERENCES project_relations(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES project_element_tags(id) ON DELETE CASCADE,
+                UNIQUE(project_relation_id, tag_id)
+            )
+        """)
+        conn.commit()
+        print("   ✓ Tabla 'project_element_tag_associations' creada")
+
+        # Paso 4: Crear índices para tabla project_element_tag_associations
+        print("   Creando índices para 'project_element_tag_associations'...")
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_project_element_tag_assoc_relation
+            ON project_element_tag_associations(project_relation_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_project_element_tag_assoc_tag
+            ON project_element_tag_associations(tag_id)
+        """)
+        conn.commit()
+        print("   ✓ Índices creados: idx_project_element_tag_assoc_relation, idx_project_element_tag_assoc_tag")
+
+        # Paso 5: Verificar creación
+        print("\n[3/3] Verificando tablas creadas...")
+
+        # Verificar tabla project_element_tags
+        cursor.execute("PRAGMA table_info(project_element_tags)")
+        tags_columns = cursor.fetchall()
+        print(f"   ✓ Tabla 'project_element_tags': {len(tags_columns)} columnas")
+
+        # Verificar tabla project_element_tag_associations
+        cursor.execute("PRAGMA table_info(project_element_tag_associations)")
+        associations_columns = cursor.fetchall()
+        print(f"   ✓ Tabla 'project_element_tag_associations': {len(associations_columns)} columnas")
+
+        # Verificar índices
+        cursor.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='index' AND tbl_name='project_element_tags'
+        """)
+        tags_indices = cursor.fetchall()
+        print(f"   ✓ Índices en 'project_element_tags': {len(tags_indices)}")
+
+        cursor.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='index' AND tbl_name='project_element_tag_associations'
+        """)
+        associations_indices = cursor.fetchall()
+        print(f"   ✓ Índices en 'project_element_tag_associations': {len(associations_indices)}")
+
+        print("\n" + "=" * 80)
+        print("✅ MIGRACIÓN 004 COMPLETADA EXITOSAMENTE")
+        print("=" * 80)
+        print("\nTablas creadas:")
+        print("  • project_element_tags (id, name UNIQUE, color, description, created_at, updated_at)")
+        print("  • project_element_tag_associations (id, project_relation_id, tag_id, created_at)")
+        print("    - UNIQUE constraint en (project_relation_id, tag_id)")
+        print("\nÍndices creados:")
+        print("  • idx_project_element_tags_name - Búsqueda rápida por nombre")
+        print("  • idx_project_element_tag_assoc_relation - Búsqueda por relación de proyecto")
+        print("  • idx_project_element_tag_assoc_tag - Búsqueda por tag")
+        print("\n✅ Sistema de tags para elementos de proyecto listo para usar")
+
+    except Exception as e:
+        logger.error(f"❌ Error en migración 004: {e}")
+        print(f"\n❌ Error durante migración 004: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+
 if __name__ == "__main__":
     """
     Run migration when script is executed directly

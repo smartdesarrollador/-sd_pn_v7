@@ -236,7 +236,61 @@ class ProjectRelationWidget(QWidget):
 
             container_layout.addWidget(desc_container)
 
+        # Tags (chips visuales)
+        self._add_tags_display(container_layout)
+
         main_layout.addWidget(container)
+
+    def _add_tags_display(self, layout):
+        """Agrega la visualización de tags"""
+        try:
+            from src.core.project_element_tag_manager import ProjectElementTagManager
+            from src.views.widgets.project_tag_chip import ProjectTagChip
+            from src.database.db_manager import DBManager
+
+            # Obtener tags de esta relación
+            relation_id = self.relation_data.get('id')
+            if not relation_id:
+                return
+
+            # Crear tag manager (necesitamos el db_manager)
+            # Por ahora usamos una instancia nueva, idealmente debería pasarse desde arriba
+            db = DBManager()
+            tag_manager = ProjectElementTagManager(db)
+
+            # Obtener tags de la relación
+            tags = tag_manager.get_relation_tags(relation_id)
+
+            if tags:
+                # Container de tags
+                tags_container = QWidget()
+                tags_layout = QHBoxLayout(tags_container)
+                tags_layout.setContentsMargins(20, 5, 0, 5)
+                tags_layout.setSpacing(5)
+
+                # Label "Tags:"
+                tags_label = QLabel("🏷️")
+                tags_label.setStyleSheet("color: #888888; font-size: 9pt;")
+                tags_layout.addWidget(tags_label)
+
+                # Agregar chips de tags
+                for tag in tags[:5]:  # Máximo 5 tags visibles
+                    chip = ProjectTagChip(tag, removable=False)
+                    chip.setMaximumHeight(24)
+                    tags_layout.addWidget(chip)
+
+                if len(tags) > 5:
+                    more_label = QLabel(f"+{len(tags) - 5} más")
+                    more_label.setStyleSheet("color: #888888; font-size: 8pt; font-style: italic;")
+                    tags_layout.addWidget(more_label)
+
+                tags_layout.addStretch()
+                layout.addWidget(tags_container)
+
+            db.close()
+
+        except Exception as e:
+            logger.warning(f"Could not load tags for relation: {e}")
 
     def _get_control_button_style(self) -> str:
         """Estilo para botones de control"""

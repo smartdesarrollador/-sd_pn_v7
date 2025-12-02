@@ -60,14 +60,19 @@ class ProjectsWindow(QMainWindow):
         main_layout.setSpacing(0)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Panel izquierdo: Lista de proyectos (25%)
+        # Panel izquierdo: Lista de proyectos (20%)
         left_panel = self._create_projects_list_panel()
         left_panel.setMaximumWidth(300)
         main_layout.addWidget(left_panel, 1)
 
-        # Panel derecho: Espacio del proyecto (75%)
-        right_panel = self._create_project_space_panel()
-        main_layout.addWidget(right_panel, 3)
+        # Panel central: Espacio del proyecto (60%)
+        center_panel = self._create_project_space_panel()
+        main_layout.addWidget(center_panel, 3)
+
+        # Panel derecho: Filtros por tags (20%)
+        right_panel = self._create_tag_filter_panel()
+        right_panel.setMaximumWidth(250)
+        main_layout.addWidget(right_panel, 1)
 
         # Styling
         self.setStyleSheet("""
@@ -243,6 +248,32 @@ class ProjectsWindow(QMainWindow):
 
         return panel
 
+    def _create_tag_filter_panel(self) -> QWidget:
+        """Crea el panel derecho con filtros por tags"""
+        panel = QWidget()
+        panel.setStyleSheet("background-color: #252525; border-left: 2px solid #3d3d3d;")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(10, 20, 10, 20)
+        layout.setSpacing(0)
+
+        # Importar widget de filtro
+        from src.core.project_element_tag_manager import ProjectElementTagManager
+        from src.views.widgets.project_tag_filter_widget import ProjectTagFilterWidget
+
+        # Crear tag manager
+        self.tag_manager = ProjectElementTagManager(self.db)
+
+        # Crear widget de filtro
+        self.tag_filter_widget = ProjectTagFilterWidget(self.tag_manager)
+        self.tag_filter_widget.filter_changed.connect(self._on_tag_filter_changed)
+        layout.addWidget(self.tag_filter_widget)
+
+        # Estado de filtros
+        self.active_tag_filters = []
+        self.tag_filter_match_all = False
+
+        return panel
+
     def _create_toolbar(self) -> QWidget:
         """Crea el toolbar con botones para agregar elementos"""
         toolbar = QWidget()
@@ -364,6 +395,10 @@ class ProjectsWindow(QMainWindow):
 
         # Cargar contenido ordenado
         content = self.db.get_project_content_ordered(project_id)
+
+        # Aplicar filtros de tags si están activos
+        if self.active_tag_filters:
+            content = self._filter_content_by_tags(content)
 
         # Cargar según el modo actual
         if self._view_mode == 'edit':
@@ -782,9 +817,12 @@ class ProjectsWindow(QMainWindow):
             logger.error(f"Error opening entity selector: {e}")
             QMessageBox.critical(self, "Error", f"Error al abrir selector:\n{str(e)}")
 
-    def _on_entity_selected(self, entity_type: str, entity_id: int, description: str):
+    def _on_entity_selected(self, entity_type: str, entity_id: int, description: str, tag_ids: list = None):
         """Maneja la selección de una entidad desde el selector"""
         try:
+            if tag_ids is None:
+                tag_ids = []
+
             # Calcular order_index basado en posición seleccionada
             order_index = None
             if self._selected_insert_position:
@@ -803,6 +841,20 @@ class ProjectsWindow(QMainWindow):
             )
 
             if success:
+                # Obtener el relation_id recién creado para asociar tags
+                relations = self.db.get_project_relations(self.current_project_id)
+                if relations:
+                    # El último creado debería ser el nuestro
+                    new_relation = max(relations, key=lambda r: r['id'])
+                    relation_id = new_relation['id']
+
+                    # Asociar tags si hay
+                    if tag_ids:
+                        from src.core.project_element_tag_manager import ProjectElementTagManager
+                        tag_manager = ProjectElementTagManager(self.db)
+                        tag_manager.assign_tags_to_relation(relation_id, tag_ids)
+                        logger.info(f"Assigned {len(tag_ids)} tags to relation {relation_id}")
+
                 logger.info(f"Added {entity_type} #{entity_id} to project {self.current_project_id}")
                 self.load_project(self.current_project_id)
                 QMessageBox.information(self, "Éxito", f"{entity_type.title()} agregado al proyecto")
@@ -843,6 +895,56 @@ class ProjectsWindow(QMainWindow):
         )
 
         if success:
+            self.load_project(self.current_project_id)
+
+    def _filter_content_by_tags(self, content: list) -> list:
+        """
+        Filtra el contenido por tags seleccionados
+
+        Args:
+            content: Lista de elementos del proyecto
+
+        Returns:
+            Lista filtrada de elementos
+        """
+        if not self.active_tag_filters:
+            return content
+
+        filtered = []
+
+        for item in content:
+            # Solo filtrar relaciones (los componentes siempre se muestran)
+            if item['type'] != 'relation':
+                filtered.append(item)
+                continue
+
+            # Obtener tags de la relación
+            relation_id = item.get('id')
+            relation_tags = self.tag_manager.get_relation_tags(relation_id)
+            relation_tag_ids = [tag.id for tag in relation_tags]
+
+            # Aplicar lógica de filtro
+            if self.tag_filter_match_all:
+                # AND: debe tener TODOS los tags
+                if all(tag_id in relation_tag_ids for tag_id in self.active_tag_filters):
+                    filtered.append(item)
+            else:
+                # OR: debe tener AL MENOS uno
+                if any(tag_id in relation_tag_ids for tag_id in self.active_tag_filters):
+                    filtered.append(item)
+
+        logger.debug(f"Filtered {len(content)} items to {len(filtered)} items")
+        return filtered
+
+    def _on_tag_filter_changed(self, tag_ids: list, match_all: bool):
+        """Maneja cambio en filtros de tags"""
+        self.active_tag_filters = tag_ids
+        self.tag_filter_match_all = match_all
+
+        logger.info(f"Tag filters changed: {len(tag_ids)} tags, match_all={match_all}")
+
+        # Recargar proyecto con filtros
+        if self.current_project_id:
             self.load_project(self.current_project_id)
 
     def on_refresh_project(self):

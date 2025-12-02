@@ -6174,6 +6174,411 @@ class DBManager:
             logger.error(f"Error obteniendo contenido de {entity_type}#{entity_id}: {e}")
             return ""
 
+    # ==================== PROJECT ELEMENT TAGS ====================
+
+    def add_project_element_tag(self, name: str, color: str = "#3498db",
+                                 description: str = "") -> int:
+        """
+        Crea un nuevo tag para elementos de proyecto
+
+        Args:
+            name: Nombre del tag (único)
+            color: Color en formato hex (default: #3498db)
+            description: Descripción del tag
+
+        Returns:
+            ID del tag creado
+
+        Raises:
+            ValueError: Si ya existe un tag con ese nombre
+        """
+        try:
+            with self.transaction() as conn:
+                cursor = conn.execute("""
+                    INSERT INTO project_element_tags (name, color, description)
+                    VALUES (?, ?, ?)
+                """, (name, color, description))
+                tag_id = cursor.lastrowid
+
+            logger.info(f"Project element tag creado: {name} (ID: {tag_id})")
+            return tag_id
+
+        except sqlite3.IntegrityError:
+            logger.error(f"Ya existe un tag con el nombre: {name}")
+            raise ValueError(f"Ya existe un tag con el nombre '{name}'")
+        except Exception as e:
+            logger.error(f"Error creando project element tag: {e}")
+            raise
+
+    def get_all_project_element_tags(self) -> List[Dict]:
+        """
+        Obtiene todos los tags de elementos de proyecto
+
+        Returns:
+            Lista de diccionarios con datos de tags
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT id, name, color, description, created_at, updated_at
+                FROM project_element_tags
+                ORDER BY name ASC
+            """)
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error obteniendo project element tags: {e}")
+            return []
+
+    def get_project_element_tag_by_id(self, tag_id: int) -> Optional[Dict]:
+        """
+        Obtiene un tag específico por su ID
+
+        Args:
+            tag_id: ID del tag
+
+        Returns:
+            Diccionario con datos del tag o None si no existe
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT id, name, color, description, created_at, updated_at
+                FROM project_element_tags
+                WHERE id = ?
+            """, (tag_id,))
+
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+
+        except Exception as e:
+            logger.error(f"Error obteniendo tag {tag_id}: {e}")
+            return None
+
+    def get_project_element_tag_by_name(self, name: str) -> Optional[Dict]:
+        """
+        Obtiene un tag específico por su nombre
+
+        Args:
+            name: Nombre del tag
+
+        Returns:
+            Diccionario con datos del tag o None si no existe
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT id, name, color, description, created_at, updated_at
+                FROM project_element_tags
+                WHERE name = ?
+            """, (name,))
+
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+
+        except Exception as e:
+            logger.error(f"Error obteniendo tag por nombre '{name}': {e}")
+            return None
+
+    def update_project_element_tag(self, tag_id: int, name: str = None,
+                                    color: str = None, description: str = None) -> bool:
+        """
+        Actualiza un tag de elemento de proyecto
+
+        Args:
+            tag_id: ID del tag
+            name: Nuevo nombre (opcional)
+            color: Nuevo color (opcional)
+            description: Nueva descripción (opcional)
+
+        Returns:
+            True si se actualizó correctamente
+        """
+        update_fields = {}
+        if name is not None:
+            update_fields['name'] = name
+        if color is not None:
+            update_fields['color'] = color
+        if description is not None:
+            update_fields['description'] = description
+
+        if not update_fields:
+            logger.warning("No hay campos válidos para actualizar")
+            return False
+
+        try:
+            # Agregar campo updated_at
+            update_fields['updated_at'] = datetime.now().isoformat()
+
+            set_clause = ", ".join([f"{field} = ?" for field in update_fields.keys()])
+            values = list(update_fields.values()) + [tag_id]
+
+            with self.transaction() as conn:
+                conn.execute(f"""
+                    UPDATE project_element_tags
+                    SET {set_clause}
+                    WHERE id = ?
+                """, values)
+
+            logger.info(f"Tag {tag_id} actualizado")
+            return True
+
+        except sqlite3.IntegrityError:
+            logger.error(f"Ya existe un tag con el nombre: {name}")
+            raise ValueError(f"Ya existe un tag con el nombre '{name}'")
+        except Exception as e:
+            logger.error(f"Error actualizando tag {tag_id}: {e}")
+            return False
+
+    def delete_project_element_tag(self, tag_id: int) -> bool:
+        """
+        Elimina un tag de elemento de proyecto y todas sus asociaciones
+
+        Args:
+            tag_id: ID del tag
+
+        Returns:
+            True si se eliminó correctamente
+        """
+        try:
+            with self.transaction() as conn:
+                # Las asociaciones se eliminan automáticamente por CASCADE
+                conn.execute("DELETE FROM project_element_tags WHERE id = ?", (tag_id,))
+
+            logger.info(f"Tag {tag_id} eliminado")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error eliminando tag {tag_id}: {e}")
+            return False
+
+    def search_project_element_tags(self, query: str) -> List[Dict]:
+        """
+        Busca tags por nombre (coincidencia parcial)
+
+        Args:
+            query: Texto a buscar
+
+        Returns:
+            Lista de tags que coinciden con la búsqueda
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT id, name, color, description, created_at, updated_at
+                FROM project_element_tags
+                WHERE name LIKE ?
+                ORDER BY name ASC
+            """, (f"%{query}%",))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error buscando tags con query '{query}': {e}")
+            return []
+
+    # ==================== PROJECT ELEMENT TAG ASSOCIATIONS ====================
+
+    def add_tag_to_project_relation(self, relation_id: int, tag_id: int) -> bool:
+        """
+        Asocia un tag a una relación de proyecto
+
+        Args:
+            relation_id: ID de la relación de proyecto
+            tag_id: ID del tag
+
+        Returns:
+            True si se asoció correctamente
+        """
+        try:
+            with self.transaction() as conn:
+                conn.execute("""
+                    INSERT OR IGNORE INTO project_element_tag_associations
+                    (project_relation_id, tag_id)
+                    VALUES (?, ?)
+                """, (relation_id, tag_id))
+
+            logger.info(f"Tag {tag_id} asociado a relación {relation_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error asociando tag {tag_id} a relación {relation_id}: {e}")
+            return False
+
+    def remove_tag_from_project_relation(self, relation_id: int, tag_id: int) -> bool:
+        """
+        Remueve un tag de una relación de proyecto
+
+        Args:
+            relation_id: ID de la relación de proyecto
+            tag_id: ID del tag
+
+        Returns:
+            True si se removió correctamente
+        """
+        try:
+            with self.transaction() as conn:
+                conn.execute("""
+                    DELETE FROM project_element_tag_associations
+                    WHERE project_relation_id = ? AND tag_id = ?
+                """, (relation_id, tag_id))
+
+            logger.info(f"Tag {tag_id} removido de relación {relation_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error removiendo tag {tag_id} de relación {relation_id}: {e}")
+            return False
+
+    def get_tags_for_project_relation(self, relation_id: int) -> List[Dict]:
+        """
+        Obtiene todos los tags de una relación de proyecto
+
+        Args:
+            relation_id: ID de la relación de proyecto
+
+        Returns:
+            Lista de tags asociados a la relación
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT t.id, t.name, t.color, t.description,
+                       t.created_at, t.updated_at, a.created_at as associated_at
+                FROM project_element_tags t
+                INNER JOIN project_element_tag_associations a ON t.id = a.tag_id
+                WHERE a.project_relation_id = ?
+                ORDER BY t.name ASC
+            """, (relation_id,))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error obteniendo tags de relación {relation_id}: {e}")
+            return []
+
+    def get_project_relations_by_tag(self, tag_id: int) -> List[Dict]:
+        """
+        Obtiene todas las relaciones de proyecto que tienen un tag específico
+
+        Args:
+            tag_id: ID del tag
+
+        Returns:
+            Lista de relaciones que tienen ese tag
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT pr.id, pr.project_id, pr.entity_type, pr.entity_id,
+                       pr.description, pr.order_index, pr.created_at
+                FROM project_relations pr
+                INNER JOIN project_element_tag_associations a ON pr.id = a.project_relation_id
+                WHERE a.tag_id = ?
+                ORDER BY pr.order_index ASC
+            """, (tag_id,))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error obteniendo relaciones con tag {tag_id}: {e}")
+            return []
+
+    def update_project_relation_tags(self, relation_id: int, tag_ids: List[int]) -> bool:
+        """
+        Actualiza todos los tags de una relación de proyecto
+        (reemplaza los tags existentes)
+
+        Args:
+            relation_id: ID de la relación de proyecto
+            tag_ids: Lista de IDs de tags a asociar
+
+        Returns:
+            True si se actualizó correctamente
+        """
+        try:
+            with self.transaction() as conn:
+                # Eliminar todas las asociaciones existentes
+                conn.execute("""
+                    DELETE FROM project_element_tag_associations
+                    WHERE project_relation_id = ?
+                """, (relation_id,))
+
+                # Agregar las nuevas asociaciones
+                for tag_id in tag_ids:
+                    conn.execute("""
+                        INSERT INTO project_element_tag_associations
+                        (project_relation_id, tag_id)
+                        VALUES (?, ?)
+                    """, (relation_id, tag_id))
+
+            logger.info(f"Tags actualizados para relación {relation_id}: {len(tag_ids)} tags")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error actualizando tags de relación {relation_id}: {e}")
+            return False
+
+    def get_tag_usage_count(self, tag_id: int) -> int:
+        """
+        Cuenta cuántas relaciones de proyecto usan un tag específico
+
+        Args:
+            tag_id: ID del tag
+
+        Returns:
+            Número de relaciones que usan el tag
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT COUNT(*) as count
+                FROM project_element_tag_associations
+                WHERE tag_id = ?
+            """, (tag_id,))
+
+            row = cursor.fetchone()
+            return row['count'] if row else 0
+
+        except Exception as e:
+            logger.error(f"Error contando uso del tag {tag_id}: {e}")
+            return 0
+
+    def get_popular_project_element_tags(self, limit: int = 10) -> List[Dict]:
+        """
+        Obtiene los tags más usados con su conteo de uso
+
+        Args:
+            limit: Número máximo de tags a retornar
+
+        Returns:
+            Lista de tags ordenados por uso (más usados primero)
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.execute("""
+                SELECT
+                    t.id, t.name, t.color, t.description,
+                    t.created_at, t.updated_at,
+                    COUNT(a.id) as usage_count
+                FROM project_element_tags t
+                LEFT JOIN project_element_tag_associations a ON t.id = a.tag_id
+                GROUP BY t.id
+                ORDER BY usage_count DESC, t.name ASC
+                LIMIT ?
+            """, (limit,))
+
+            return [dict(row) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error obteniendo tags populares: {e}")
+            return []
+
     # ==================== Context Manager ====================
 
     def __enter__(self):
