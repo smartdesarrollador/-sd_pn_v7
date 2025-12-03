@@ -857,6 +857,65 @@ class DBManager:
         except Exception as e:
             logger.error(f"Error getting tag orders: {e}")
             return {}
+
+    # ========== AREA TAG ORDERING ==========
+
+    def ensure_area_tag_orders_table(self):
+        """Ensures the area_tag_orders table exists"""
+        query = """
+            CREATE TABLE IF NOT EXISTS area_tag_orders (
+                area_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                order_index INTEGER NOT NULL,
+                PRIMARY KEY (area_id, tag_id),
+                FOREIGN KEY (area_id) REFERENCES areas(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES area_element_tags(id) ON DELETE CASCADE
+            );
+        """
+        self.execute_update(query)
+
+    def update_area_tag_order(self, area_id: int, tag_id: int, order_index: int) -> bool:
+        """
+        Updates or inserts the order of a tag in an area
+
+        Args:
+            area_id: Area ID
+            tag_id: Tag ID
+            order_index: New order index
+
+        Returns:
+            True if successful
+        """
+        query = """
+            INSERT INTO area_tag_orders (area_id, tag_id, order_index)
+            VALUES (?, ?, ?)
+            ON CONFLICT(area_id, tag_id) DO UPDATE SET
+                order_index = excluded.order_index
+        """
+        try:
+            self.execute_update(query, (area_id, tag_id, order_index))
+            return True
+        except Exception as e:
+            logger.error(f"Error updating area tag order: {e}")
+            return False
+
+    def get_area_tag_orders(self, area_id: int) -> Dict[int, int]:
+        """
+        Gets the custom order of tags for an area
+
+        Args:
+            area_id: Area ID
+
+        Returns:
+            Dict mapping tag_id -> order_index
+        """
+        query = "SELECT tag_id, order_index FROM area_tag_orders WHERE area_id = ?"
+        try:
+            results = self.execute_query(query, (area_id,))
+            return {row['tag_id']: row['order_index'] for row in results}
+        except Exception as e:
+            logger.error(f"Error getting area tag orders: {e}")
+            return {}
         logger.info(f"Category deleted: ID {category_id}")
 
     def toggle_category_active(self, category_id: int) -> bool:

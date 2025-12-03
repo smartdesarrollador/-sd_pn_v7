@@ -10,8 +10,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QCheckBox, QScrollArea, QPushButton, QFrame
 )
-from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import pyqtSignal, Qt, QSize
+from PyQt6.QtGui import QFont, QIcon
 
 from src.core.area_element_tag_manager import AreaElementTagManager
 
@@ -84,6 +84,70 @@ class TagCheckBox(QCheckBox):
         self.repaint()
 
 
+class TagItemWidget(QWidget):
+    """
+    Widget contenedor para un tag con controles de reordenamiento
+    """
+    
+    # Señales para reordenamiento
+    move_up_requested = pyqtSignal(int)   # tag_id
+    move_down_requested = pyqtSignal(int) # tag_id
+
+    def __init__(self, tag_id: int, tag_name: str, tag_color: str, parent=None):
+        super().__init__(parent)
+        self.tag_id = tag_id
+        self.tag_name = tag_name
+        self.tag_color = tag_color
+        
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        # Checkbox (ocupa la mayor parte del espacio)
+        self.checkbox = TagCheckBox(self.tag_name, self.tag_color)
+        layout.addWidget(self.checkbox, 1)
+
+        # Botones de reordenamiento
+        btn_style = """
+            QPushButton {
+                background-color: transparent;
+                color: #95a5a6;
+                border: none;
+                border-radius: 3px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #34495e;
+                color: #ecf0f1;
+            }
+        """
+
+        self.up_btn = QPushButton("▲")
+        self.up_btn.setFixedSize(20, 20)
+        self.up_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.up_btn.setToolTip("Mover arriba")
+        self.up_btn.setStyleSheet(btn_style)
+        self.up_btn.clicked.connect(lambda: self.move_up_requested.emit(self.tag_id))
+        layout.addWidget(self.up_btn)
+
+        self.down_btn = QPushButton("▼")
+        self.down_btn.setFixedSize(20, 20)
+        self.down_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.down_btn.setToolTip("Mover abajo")
+        self.down_btn.setStyleSheet(btn_style)
+        self.down_btn.clicked.connect(lambda: self.move_down_requested.emit(self.tag_id))
+        layout.addWidget(self.down_btn)
+
+    def isChecked(self):
+        return self.checkbox.isChecked()
+
+    def setChecked(self, checked):
+        self.checkbox.setChecked(checked)
+
+
 class AreaTagFilterWidget(QWidget):
     """
     Widget para filtrar elementos por tags - Estilo Dashboard
@@ -107,7 +171,7 @@ class AreaTagFilterWidget(QWidget):
         super().__init__(parent)
         self.tag_manager = tag_manager
         self.area_id = area_id
-        self.tag_checkboxes = {}  # {tag_id: TagCheckBox}
+        self.tag_items = {}  # {tag_id: TagItemWidget}
         self.match_all = False  # False = OR logic, True = AND logic
         self._setup_ui()
         self._load_tags()
@@ -256,10 +320,10 @@ class AreaTagFilterWidget(QWidget):
         # Guardar estado actual de checkboxes antes de limpiar
         current_selected = self.get_selected_tag_ids()
 
-        # Limpiar checkboxes existentes
-        for checkbox in self.tag_checkboxes.values():
-            checkbox.deleteLater()
-        self.tag_checkboxes.clear()
+        # Limpiar widgets existentes
+        for item_widget in self.tag_items.values():
+            item_widget.deleteLater()
+        self.tag_items.clear()
 
         # Remover widgets del layout (excepto el stretch)
         while self.tags_layout.count() > 1:
@@ -279,27 +343,75 @@ class AreaTagFilterWidget(QWidget):
         # Actualizar contador
         self.count_label.setText(f"({len(tags_sorted)} tags)")
 
-        # Crear checkboxes usando la clase personalizada
+        # Crear widgets usando TagItemWidget
+        self.current_tags_order = [] # Lista de IDs en orden actual
+
         for tag in tags_sorted:
-            # Usar TagCheckBox personalizado que garantiza estilos correctos
-            checkbox = TagCheckBox(tag.name, tag.color, parent=self.tags_container)
+            self.current_tags_order.append(tag.id)
+            
+            # Usar TagItemWidget que incluye botones de reordenamiento
+            item_widget = TagItemWidget(tag.id, tag.name, tag.color, parent=self.tags_container)
 
             # Restaurar estado si estaba seleccionado antes
             if tag.id in current_selected:
-                checkbox.setChecked(True)
+                item_widget.setChecked(True)
 
-            # Conectar señal
-            checkbox.stateChanged.connect(self._on_filter_changed)
+            # Conectar señal de checkbox
+            item_widget.checkbox.stateChanged.connect(self._on_filter_changed)
+            
+            # Conectar señales de reordenamiento (solo si hay área seleccionada)
+            if self.area_id is not None:
+                item_widget.move_up_requested.connect(self._move_tag_up)
+                item_widget.move_down_requested.connect(self._move_tag_down)
+                item_widget.up_btn.setVisible(True)
+                item_widget.down_btn.setVisible(True)
+            else:
+                item_widget.up_btn.setVisible(False)
+                item_widget.down_btn.setVisible(False)
 
             # Guardar referencia
-            self.tag_checkboxes[tag.id] = checkbox
+            self.tag_items[tag.id] = item_widget
 
             # Insertar antes del stretch
-            self.tags_layout.insertWidget(self.tags_layout.count() - 1, checkbox)
+            self.tags_layout.insertWidget(self.tags_layout.count() - 1, item_widget)
 
         # Forzar actualización del layout
         self.tags_container.updateGeometry()
         self.tags_container.update()
+
+    def _move_tag_up(self, tag_id: int):
+        """Mueve un tag hacia arriba"""
+        if self.area_id is None or tag_id not in self.current_tags_order:
+            return
+            
+        idx = self.current_tags_order.index(tag_id)
+        if idx > 0:
+            # Swap en la lista local
+            self.current_tags_order[idx], self.current_tags_order[idx-1] = \
+                self.current_tags_order[idx-1], self.current_tags_order[idx]
+            
+            # Guardar nuevo orden
+            self.tag_manager.set_area_tags_order(self.area_id, self.current_tags_order)
+            
+            # Recargar UI
+            self._load_tags()
+
+    def _move_tag_down(self, tag_id: int):
+        """Mueve un tag hacia abajo"""
+        if self.area_id is None or tag_id not in self.current_tags_order:
+            return
+            
+        idx = self.current_tags_order.index(tag_id)
+        if idx < len(self.current_tags_order) - 1:
+            # Swap en la lista local
+            self.current_tags_order[idx], self.current_tags_order[idx+1] = \
+                self.current_tags_order[idx+1], self.current_tags_order[idx]
+            
+            # Guardar nuevo orden
+            self.tag_manager.set_area_tags_order(self.area_id, self.current_tags_order)
+            
+            # Recargar UI
+            self._load_tags()
 
     def _on_filter_changed(self):
         """Maneja cambio en filtros"""
@@ -319,10 +431,10 @@ class AreaTagFilterWidget(QWidget):
     def _select_all(self):
         """Selecciona todos los tags"""
         # Bloquear señales temporalmente para evitar múltiples emisiones
-        for checkbox in self.tag_checkboxes.values():
-            checkbox.blockSignals(True)
-            checkbox.setChecked(True)
-            checkbox.blockSignals(False)
+        for item_widget in self.tag_items.values():
+            item_widget.checkbox.blockSignals(True)
+            item_widget.setChecked(True)
+            item_widget.checkbox.blockSignals(False)
 
         # Emitir señal una sola vez
         self._on_filter_changed()
@@ -330,10 +442,10 @@ class AreaTagFilterWidget(QWidget):
     def _select_none(self):
         """Deselecciona todos los tags"""
         # Bloquear señales temporalmente para evitar múltiples emisiones
-        for checkbox in self.tag_checkboxes.values():
-            checkbox.blockSignals(True)
-            checkbox.setChecked(False)
-            checkbox.blockSignals(False)
+        for item_widget in self.tag_items.values():
+            item_widget.checkbox.blockSignals(True)
+            item_widget.setChecked(False)
+            item_widget.checkbox.blockSignals(False)
 
         # Emitir señal una sola vez
         self._on_filter_changed()
@@ -346,8 +458,8 @@ class AreaTagFilterWidget(QWidget):
             Lista de IDs de tags seleccionados
         """
         return [
-            tag_id for tag_id, checkbox in self.tag_checkboxes.items()
-            if checkbox.isChecked()
+            tag_id for tag_id, item_widget in self.tag_items.items()
+            if item_widget.isChecked()
         ]
 
     def set_selected_tag_ids(self, tag_ids: List[int]):
@@ -357,10 +469,10 @@ class AreaTagFilterWidget(QWidget):
         Args:
             tag_ids: Lista de IDs de tags a seleccionar
         """
-        for tag_id, checkbox in self.tag_checkboxes.items():
-            checkbox.blockSignals(True)
-            checkbox.setChecked(tag_id in tag_ids)
-            checkbox.blockSignals(False)
+        for tag_id, item_widget in self.tag_items.items():
+            item_widget.checkbox.blockSignals(True)
+            item_widget.setChecked(tag_id in tag_ids)
+            item_widget.checkbox.blockSignals(False)
 
         # Emitir señal una vez al final
         self._on_filter_changed()
