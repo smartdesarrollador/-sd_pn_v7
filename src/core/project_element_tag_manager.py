@@ -626,12 +626,13 @@ class ProjectElementTagManager(QObject):
         """
         Obtiene los tags únicos usados en un proyecto específico
         (incluye tags de relaciones y componentes)
+        Respetando el orden personalizado del proyecto.
 
         Args:
             project_id: ID del proyecto
 
         Returns:
-            Lista de tags únicos usados en el proyecto, ordenados por nombre
+            Lista de tags únicos usados en el proyecto, ordenados
         """
         try:
             # Recopilar IDs de tags únicos
@@ -658,12 +659,57 @@ class ProjectElementTagManager(QObject):
                 if tag:
                     tags.append(tag)
 
-            # Ordenar por nombre
-            return sort_tags_by_name(tags)
+            # Obtener orden personalizado
+            tag_orders = self.db.get_project_tag_orders(project_id)
+
+            # Función de ordenamiento
+            def get_sort_key(t):
+                # Si tiene orden personalizado, usarlo
+                if t.id in tag_orders:
+                    return (0, tag_orders[t.id], t.name.lower())
+                # Si no, al final, ordenado alfabéticamente
+                return (1, 0, t.name.lower())
+
+            # Ordenar
+            tags.sort(key=get_sort_key)
+            return tags
 
         except Exception as e:
             logger.error(f"Error obteniendo tags del proyecto {project_id}: {e}")
             return []
+
+    def update_project_tag_order(self, project_id: int, tag_id: int, new_index: int) -> bool:
+        """
+        Actualiza el orden de un tag en un proyecto
+
+        Args:
+            project_id: ID del proyecto
+            tag_id: ID del tag
+            new_index: Nuevo índice
+
+        Returns:
+            True si se actualizó correctamente
+        """
+        return self.db.update_project_tag_order(project_id, tag_id, new_index)
+
+    def set_project_tags_order(self, project_id: int, ordered_tag_ids: List[int]) -> bool:
+        """
+        Establece el orden completo de tags para un proyecto
+
+        Args:
+            project_id: ID del proyecto
+            ordered_tag_ids: Lista de IDs de tags en el orden deseado
+
+        Returns:
+            True si se actualizaron todos
+        """
+        try:
+            for index, tag_id in enumerate(ordered_tag_ids):
+                self.db.update_project_tag_order(project_id, tag_id, index)
+            return True
+        except Exception as e:
+            logger.error(f"Error estableciendo orden de tags: {e}")
+            return False
 
     def filter_tags(self, query: str) -> List[ProjectElementTag]:
         """

@@ -798,6 +798,65 @@ class DBManager:
         """
         query = "DELETE FROM categories WHERE id = ?"
         self.execute_update(query, (category_id,))
+
+    # ========== PROJECT TAG ORDERING ==========
+
+    def ensure_project_tag_orders_table(self):
+        """Ensures the project_tag_orders table exists"""
+        query = """
+            CREATE TABLE IF NOT EXISTS project_tag_orders (
+                project_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                order_index INTEGER NOT NULL,
+                PRIMARY KEY (project_id, tag_id),
+                FOREIGN KEY (project_id) REFERENCES proyectos(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES project_element_tags(id) ON DELETE CASCADE
+            );
+        """
+        self.execute_update(query)
+
+    def update_project_tag_order(self, project_id: int, tag_id: int, order_index: int) -> bool:
+        """
+        Updates or inserts the order of a tag in a project
+
+        Args:
+            project_id: Project ID
+            tag_id: Tag ID
+            order_index: New order index
+
+        Returns:
+            True if successful
+        """
+        query = """
+            INSERT INTO project_tag_orders (project_id, tag_id, order_index)
+            VALUES (?, ?, ?)
+            ON CONFLICT(project_id, tag_id) DO UPDATE SET
+                order_index = excluded.order_index
+        """
+        try:
+            self.execute_update(query, (project_id, tag_id, order_index))
+            return True
+        except Exception as e:
+            logger.error(f"Error updating tag order: {e}")
+            return False
+
+    def get_project_tag_orders(self, project_id: int) -> Dict[int, int]:
+        """
+        Gets the custom order of tags for a project
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Dict mapping tag_id -> order_index
+        """
+        query = "SELECT tag_id, order_index FROM project_tag_orders WHERE project_id = ?"
+        try:
+            results = self.execute_query(query, (project_id,))
+            return {row['tag_id']: row['order_index'] for row in results}
+        except Exception as e:
+            logger.error(f"Error getting tag orders: {e}")
+            return {}
         logger.info(f"Category deleted: ID {category_id}")
 
     def toggle_category_active(self, category_id: int) -> bool:
