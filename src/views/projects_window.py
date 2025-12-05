@@ -543,6 +543,9 @@ class ProjectsWindow(QMainWindow):
         # Conectar señal de click para copiar
         card.clicked.connect(self._copy_to_clipboard)
 
+        # Conectar señal de "Ver items" para tags, categorías y listas
+        card.view_items_requested.connect(self._on_view_items_requested)
+
         # Agregar card al grid
         self.clean_mode_grid.add_card(card)
 
@@ -786,6 +789,99 @@ class ProjectsWindow(QMainWindow):
         """Copia texto al portapapeles"""
         QApplication.clipboard().setText(text)
         logger.info(f"Copied to clipboard: {text[:50]}...")
+
+    def _on_view_items_requested(self, relation_type: str, entity_id: int, entity_name: str, entity_icon: str):
+        """Maneja solicitud de ver items relacionados desde un card"""
+        logger.info(f"Opening related items panel for {relation_type}: {entity_name} (ID: {entity_id})")
+
+        try:
+            # Importar panel y tipos necesarios
+            from src.views.dialogs.related_items_floating_panel import RelatedItemsFloatingPanel, RelationType
+            from src.models.item import Item
+
+            # Mapear tipo de card a RelationType
+            relation_type_map = {
+                'tag': RelationType.TAG,
+                'category': RelationType.CATEGORY,
+                'list': RelationType.LIST
+            }
+
+            if relation_type not in relation_type_map:
+                logger.warning(f"Unknown relation type: {relation_type}")
+                return
+
+            panel_relation_type = relation_type_map[relation_type]
+
+            # Obtener items según el tipo
+            items_data = []
+            if relation_type == 'tag':
+                # Obtener items por tag_id
+                items_data = self.db.get_items_by_tag_id(entity_id)
+            elif relation_type == 'category':
+                # Obtener items por categoría
+                items_data = self.db.get_items_by_category(entity_id)
+            elif relation_type == 'list':
+                # Obtener items por lista
+                items_data = self.db.get_items_by_lista(entity_id)
+
+            # Convertir a objetos Item
+            items = [Item.from_dict(item_dict) for item_dict in items_data]
+
+            logger.info(f"Found {len(items)} items for {relation_type}: {entity_name}")
+
+            # Crear clave única para este panel
+            panel_key = f"{relation_type}_{entity_id}"
+
+            # Obtener gestor global de paneles
+            from src.core.floating_panels_manager import get_panels_manager
+            panels_manager = get_panels_manager()
+
+            # Verificar si ya existe un panel registrado para esta entidad
+            existing_panel = panels_manager.get_registered_panel(panel_key)
+            if existing_panel and not existing_panel.isHidden():
+                logger.info(f"Panel already open for {panel_key}, bringing to front")
+                existing_panel.raise_()
+                existing_panel.activateWindow()
+                return
+
+            # Crear panel - SIN parent para hacerlo COMPLETAMENTE independiente
+            panel = RelatedItemsFloatingPanel(
+                relation_type=panel_relation_type,
+                entity_id=entity_id,
+                entity_name=entity_name,
+                entity_icon=entity_icon,
+                items=items,
+                db_manager=self.db,  # Pasar DBManager para persistencia
+                parent=None  # Sin parent = independiente del sistema
+            )
+
+            # Conectar señal de cierre para des-registrar del gestor
+            panel.panel_closed.connect(lambda: panels_manager.unregister_panel(panel_key))
+
+            # Registrar panel en el gestor global (esto mantiene la referencia)
+            panels_manager.register_panel(panel, panel_key)
+
+            # Posicionar panel (centro de la ventana principal, si está visible)
+            if self.isVisible():
+                panel.move(self.x() + 100, self.y() + 100)
+            else:
+                # Si la ventana principal está oculta, centrar en pantalla
+                from PyQt6.QtWidgets import QApplication
+                screen = QApplication.primaryScreen()
+                if screen:
+                    screen_rect = screen.availableGeometry()
+                    panel.move(
+                        (screen_rect.width() - panel.width()) // 2,
+                        (screen_rect.height() - panel.height()) // 2
+                    )
+
+            # Mostrar panel
+            panel.show()
+            logger.info(f"Panel opened and registered globally with key: {panel_key}")
+
+        except Exception as e:
+            logger.error(f"Error opening related items panel: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Error al abrir panel de items:\n{str(e)}")
 
     def toggle_view_mode(self):
         """Alterna entre Modo Edición y Modo Vista Amigable"""
@@ -1138,7 +1234,11 @@ class ProjectsWindow(QMainWindow):
         QMessageBox.information(self, "Info", "Los cambios se guardan automáticamente")
 
     def closeEvent(self, event):
-        """Al cerrar la ventana"""
-        logger.info("ProjectsWindow closed")
+        """Al cerrar la ventana - los paneles flotantes permanecen abiertos independientemente"""
+        logger.info("ProjectsWindow closing - all floating panels will remain open")
+
+        # Los paneles están registrados en el gestor global, por lo que permanecen
+        # vivos incluso cuando esta ventana se cierra
+
         self.closed.emit()
         event.accept()

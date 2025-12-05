@@ -25,6 +25,7 @@ class ProjectCardWidget(QWidget):
 
     # Señales
     clicked = pyqtSignal(str)  # Emite el contenido a copiar
+    view_items_requested = pyqtSignal(str, int, str, str)  # relation_type, entity_id, entity_name, entity_icon
 
     # Colores por tipo de elemento
     TYPE_COLORS = {
@@ -310,6 +311,33 @@ class ProjectCardWidget(QWidget):
                 """)
                 footer_layout.addWidget(date_label)
 
+        # Botón "Ver items" para tags, categorías y listas
+        if self.item_type in ['tag', 'category', 'list']:
+            self.view_items_btn = QPushButton("👁️")
+            self.view_items_btn.setFixedSize(28, 28)
+            self.view_items_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.view_items_btn.setToolTip("Ver todos los items relacionados")
+            border_color = self.TYPE_COLORS.get(self.item_type, '#555555')
+            self.view_items_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: #1e1e1e;
+                    color: {border_color};
+                    border: 1px solid {border_color};
+                    border-radius: 4px;
+                    font-size: 12pt;
+                    padding: 2px;
+                }}
+                QPushButton:hover {{
+                    background-color: {border_color}40;
+                    border: 2px solid {border_color};
+                }}
+                QPushButton:pressed {{
+                    background-color: {border_color}60;
+                }}
+            """)
+            self.view_items_btn.clicked.connect(self._on_view_items_clicked)
+            footer_layout.addWidget(self.view_items_btn)
+
         card_layout.addLayout(footer_layout)
 
         main_layout.addWidget(self.card_frame)
@@ -406,6 +434,18 @@ class ProjectCardWidget(QWidget):
 
         # Mostrar feedback visual
         self.show_copy_feedback()
+
+    def _on_view_items_clicked(self):
+        """Callback cuando se hace click en el botón 'Ver items'"""
+        # Obtener datos según el tipo
+        entity_id = self.item_data.get('id', 0)
+        entity_name = self.item_data.get('name', 'Sin nombre')
+        entity_icon = self.item_data.get('icon', self.TYPE_ICONS.get(self.item_type, '📄'))
+
+        logger.info(f"View items requested for {self.item_type}: {entity_name} (ID: {entity_id})")
+
+        # Emitir señal con los datos necesarios
+        self.view_items_requested.emit(self.item_type, entity_id, entity_name, entity_icon)
 
     def _show_full_description(self):
         """Muestra la descripción completa en un diálogo"""

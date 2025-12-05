@@ -451,6 +451,20 @@ class DBManager:
                     is_valid BOOLEAN DEFAULT 1
                 );
 
+                -- Tabla de estado de paneles flotantes relacionados
+                CREATE TABLE IF NOT EXISTS floating_panels_state (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    panel_type TEXT NOT NULL,
+                    entity_id INTEGER NOT NULL,
+                    position_x INTEGER,
+                    position_y INTEGER,
+                    width INTEGER,
+                    height INTEGER,
+                    is_maximized BOOLEAN DEFAULT 0,
+                    last_opened TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(panel_type, entity_id)
+                );
+
                 -- Tabla de pestañas del notebook
                 CREATE TABLE IF NOT EXISTS notebook_tabs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2035,6 +2049,45 @@ class DBManager:
 
         return results
 
+    def get_items_by_tag_id(self, tag_id: int) -> List[Dict]:
+        """
+        Get all items with a specific tag ID
+
+        Args:
+            tag_id: Tag ID
+
+        Returns:
+            List[Dict]: List of item dictionaries with category info
+        """
+        query = """
+            SELECT i.*, c.name as category_name
+            FROM items i
+            JOIN item_tags it ON i.id = it.item_id
+            JOIN categories c ON i.category_id = c.id
+            WHERE it.tag_id = ?
+            ORDER BY i.last_used DESC
+        """
+        results = self.execute_query(query, (tag_id,))
+
+        # Initialize encryption manager for decrypting sensitive items
+        from src.core.encryption_manager import EncryptionManager
+        encryption_manager = EncryptionManager()
+
+        # Load tags for each item and decrypt sensitive content
+        for item in results:
+            item['tags'] = self.get_tags_by_item(item['id'])
+
+            # Decrypt sensitive content
+            if item.get('is_sensitive') and item.get('content'):
+                try:
+                    item['content'] = encryption_manager.decrypt(item['content'])
+                    logger.debug(f"Content decrypted for item ID: {item['id']}")
+                except Exception as e:
+                    logger.error(f"Failed to decrypt item {item['id']}: {e}")
+                    item['content'] = "[DECRYPTION ERROR]"
+
+        return results
+
     def search_tags(self, query: str) -> List[Dict]:
         """
         Search tags by name
@@ -3261,6 +3314,66 @@ class DBManager:
         query = "UPDATE pinned_panels SET is_active = 0"
         self.execute_update(query)
         logger.info("All pinned panels marked as inactive")
+
+    # ========== FLOATING PANELS STATE (Related Items Panels) ==========
+
+    def save_floating_panel_state(self, panel_type: str, entity_id: int, position_x: int,
+                                   position_y: int, width: int, height: int,
+                                   is_maximized: bool = False) -> None:
+        """
+        Guardar o actualizar el estado de un panel flotante de items relacionados
+
+        Args:
+            panel_type: Tipo de panel ('tag', 'category', 'list', 'project')
+            entity_id: ID de la entidad relacionada
+            position_x: Posición X en pantalla
+            position_y: Posición Y en pantalla
+            width: Ancho del panel
+            height: Alto del panel
+            is_maximized: Si el panel está maximizado
+        """
+        query = """
+            INSERT OR REPLACE INTO floating_panels_state
+            (panel_type, entity_id, position_x, position_y, width, height, is_maximized, last_opened)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """
+        self.execute_update(query, (panel_type, entity_id, position_x, position_y,
+                                    width, height, is_maximized))
+        logger.debug(f"Saved floating panel state: {panel_type} - {entity_id}")
+
+    def get_floating_panel_state(self, panel_type: str, entity_id: int) -> Optional[Dict]:
+        """
+        Obtener el estado guardado de un panel flotante
+
+        Args:
+            panel_type: Tipo de panel
+            entity_id: ID de la entidad relacionada
+
+        Returns:
+            Dict con el estado del panel o None si no existe
+        """
+        query = """
+            SELECT * FROM floating_panels_state
+            WHERE panel_type = ? AND entity_id = ?
+        """
+        results = self.execute_query(query, (panel_type, entity_id))
+        return results[0] if results else None
+
+    def delete_floating_panel_state(self, panel_type: str, entity_id: int) -> bool:
+        """
+        Eliminar el estado guardado de un panel flotante
+
+        Args:
+            panel_type: Tipo de panel
+            entity_id: ID de la entidad relacionada
+
+        Returns:
+            bool: True si se eliminó correctamente
+        """
+        query = "DELETE FROM floating_panels_state WHERE panel_type = ? AND entity_id = ?"
+        self.execute_update(query, (panel_type, entity_id))
+        logger.debug(f"Deleted floating panel state: {panel_type} - {entity_id}")
+        return True
 
     # ========== PINNED PROCESS PANELS ==========
 
