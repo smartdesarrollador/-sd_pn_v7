@@ -35,6 +35,7 @@ from core.hotkey_manager import HotkeyManager
 from core.tray_manager import TrayManager
 from core.session_manager import SessionManager
 from core.notification_manager import NotificationManager
+from core.taskbar_minimizable_mixin import make_window_minimizable
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -674,6 +675,12 @@ class MainWindow(QMainWindow):
                 )
                 self.projects_window.closed.connect(self.on_projects_window_closed)
 
+                # Agregar soporte de minimización a taskbar (FASE 3)
+                make_window_minimizable(self.projects_window)
+                self.projects_window.entity_name = "Gestión de Proyectos"
+                self.projects_window.entity_icon = "📁"
+                logger.info("Projects window: minimization support added")
+
             # Show the window
             self.projects_window.show()
             self.projects_window.activateWindow()
@@ -731,6 +738,12 @@ class MainWindow(QMainWindow):
                     parent=self
                 )
                 self.areas_window.closed.connect(self.on_areas_window_closed)
+
+                # Agregar soporte de minimización a taskbar (FASE 3)
+                make_window_minimizable(self.areas_window)
+                self.areas_window.entity_name = "Gestión de Áreas"
+                self.areas_window.entity_icon = "🗂️"
+                logger.info("Areas window: minimization support added")
 
             # Show the window
             self.areas_window.show()

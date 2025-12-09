@@ -19,12 +19,13 @@ from views.widgets.search_bar import SearchBar
 from styles.futuristic_theme import get_theme
 from styles.panel_styles import PanelStyles
 from utils.panel_resizer import PanelResizer
+from core.taskbar_minimizable_mixin import TaskbarMinimizableMixin
 
 # Get logger
 logger = logging.getLogger(__name__)
 
 
-class ProcessFloatingPanel(QWidget):
+class ProcessFloatingPanel(QWidget, TaskbarMinimizableMixin):
     """Floating panel to display all items and lists from a process"""
 
     # Signals
@@ -46,6 +47,9 @@ class ProcessFloatingPanel(QWidget):
         self.is_minimized = False
         self.normal_height = None
         self.normal_width = None
+
+        # FASE 4: Pin + minimize integration
+        self.pinned_position = None  # Posición anclada para restaurar después de minimizar
 
         # Items and lists from process
         self.all_items = []
@@ -81,6 +85,15 @@ class ProcessFloatingPanel(QWidget):
         self.update_timer.setSingleShot(True)
         self.update_timer.timeout.connect(self._save_panel_state_to_db)
         self.update_delay_ms = 1000
+
+        # Configurar minimización a taskbar (TaskbarMinimizableMixin)
+        self.entity_name = "Proceso"  # Se actualizará en load_process
+        self.entity_icon = "⚙️"
+        self.setup_taskbar_minimization()
+
+        # FASE 4: Conectar señales para callbacks de minimización
+        self.minimized_to_taskbar.connect(self.on_minimized)
+        self.restored_from_taskbar.connect(self.on_restored)
 
         self.init_ui()
 
@@ -420,6 +433,10 @@ class ProcessFloatingPanel(QWidget):
         """Load process and all its items/lists"""
         try:
             logger.info(f"Loading process: {process.name} (ID: {process.id})")
+
+            # Actualizar atributos de entidad para taskbar
+            self.entity_name = f"⚙️ {process.name}"
+            self.entity_icon = "⚙️"
             self.current_process = process
 
             # Update header
@@ -711,6 +728,10 @@ class ProcessFloatingPanel(QWidget):
 
         # Update button icon and tooltip
         if self.is_pinned:
+            # FASE 4: Guardar posición al anclar
+            self.pinned_position = self.pos()
+            logger.info(f"[FASE 4] Panel anclado en posición: {self.pinned_position}")
+
             self.pin_button.setText("📍")
             self.pin_button.setToolTip("Desanclar panel")
             # Update header color
@@ -752,46 +773,22 @@ class ProcessFloatingPanel(QWidget):
             self.delete_from_database()
 
     def on_minimize_clicked(self):
-        """Toggle minimize state (only if pinned)"""
+        """
+        Minimizar panel a la barra de tareas avanzada (solo para paneles anclados)
+
+        FASE 2 + FASE 4: Usa AdvancedTaskbarManager para minimización unificada
+        """
         if not self.is_pinned:
-            return
+            logger.warning("Cannot minimize unpinned panel")
+            return  # Only allow minimize for pinned panels
 
-        self.is_minimized = not self.is_minimized
+        # Usar el nuevo sistema de minimización a taskbar
+        self.minimize_to_taskbar()
+        logger.info(f"[FASE 2] Panel de proceso minimizado a barra de tareas avanzada")
 
-        if self.is_minimized:
-            # Save current size
-            self.normal_height = self.height()
-            self.normal_width = self.width()
-
-            # Minimize to header only - hide all content widgets
-            self.content_widget.hide()
-            self.action_bar.hide()
-            self.display_options_widget.hide()
-            self.setFixedHeight(60)
-            self.minimize_button.setText("□")
-            self.minimize_button.setToolTip("Restaurar")
-        else:
-            # Restore size - show all content widgets
-            self.content_widget.show()
-            self.action_bar.show()
-            self.display_options_widget.show()
-            # Remove ALL height constraints first
-            self.setMinimumHeight(0)  # Remove minimum temporarily
-            self.setMaximumHeight(16777215)  # Qt's QWIDGETSIZE_MAX
-            self.setFixedHeight(16777215)  # Remove fixed height
-            # Set proper minimum height
-            self.setMinimumHeight(400)
-            self.setMaximumHeight(16777215)
-            # Restore to original size
-            if self.normal_height:
-                self.resize(self.normal_width, self.normal_height)
-            self.minimize_button.setText("−")
-            self.minimize_button.setToolTip("Minimizar")
-
-        logger.info(f"Panel minimized: {self.is_minimized}")
-
-        # Save state change to database
-        self.schedule_panel_update()
+        # Guardar estado en BD
+        if self.panel_id:
+            self.schedule_panel_update()
 
     def on_edit_process_clicked(self):
         """Open ProcessBuilderWindow to edit current process"""
@@ -1198,3 +1195,17 @@ class ProcessFloatingPanel(QWidget):
         """Handle window move - schedule panel state update"""
         super().moveEvent(event)
         self.schedule_panel_update()
+
+    # FASE 4: Callbacks para integración anclaje + minimización
+    def on_minimized(self):
+        """Callback cuando el panel se minimiza a taskbar"""
+        logger.info(f"[FASE 4] ProcessFloatingPanel minimizado - anclado={self.is_pinned}")
+
+    def on_restored(self):
+        """Callback cuando el panel se restaura desde taskbar"""
+        # Si está anclado y tiene posición guardada, restaurar a esa posición
+        if self.is_pinned and self.pinned_position:
+            self.move(self.pinned_position)
+            logger.info(f"[FASE 4] ProcessFloatingPanel restaurado a posición anclada: {self.pinned_position}")
+        else:
+            logger.info(f"[FASE 4] ProcessFloatingPanel restaurado (sin posición anclada)")

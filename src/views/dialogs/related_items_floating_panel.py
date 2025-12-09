@@ -729,19 +729,19 @@ class RelatedItemsFloatingPanel(QWidget):
         logger.info("Pin toggled")
 
     def toggle_minimize(self):
-        """Minimizar el panel - lo agrega al gestor de paneles minimizados"""
-        from src.core.floating_panels_manager import get_panels_manager
+        """Minimizar el panel - lo agrega al gestor avanzado de barra de tareas"""
+        from src.core.advanced_taskbar_manager import get_advanced_taskbar
 
-        # Obtener gestor de paneles
-        panels_manager = get_panels_manager()
+        # Obtener gestor avanzado de taskbar
+        taskbar = get_advanced_taskbar()
 
         # Ocultar panel
         self.hide()
 
-        # Agregar al gestor de paneles minimizados
-        panels_manager.add_minimized_panel(self)
+        # Agregar a la barra de tareas avanzada
+        taskbar.add_minimized_window(self)
 
-        logger.info(f"Panel minimizado: {self.entity_name}")
+        logger.info(f"Panel minimizado a taskbar avanzada: {self.entity_name}")
 
     def toggle_maximize(self):
         """Maximizar/restaurar el panel"""
@@ -999,13 +999,13 @@ class RelatedItemsFloatingPanel(QWidget):
 
     def closeEvent(self, event):
         """Handle close event"""
-        # Remover del gestor de paneles minimizados si está ahí
+        # Remover de la barra de tareas avanzada si está ahí
         try:
-            from src.core.floating_panels_manager import get_panels_manager
-            panels_manager = get_panels_manager()
-            panels_manager.remove_minimized_panel(self)
+            from src.core.advanced_taskbar_manager import get_advanced_taskbar
+            taskbar = get_advanced_taskbar()
+            taskbar.remove_minimized_window(self)
         except Exception as e:
-            logger.debug(f"Error removing from panels manager: {e}")
+            logger.debug(f"Error removing from taskbar: {e}")
 
         # Guardar estado final antes de cerrar
         self._save_state_to_db()

@@ -19,12 +19,13 @@ from core.advanced_filter_engine import AdvancedFilterEngine
 from core.pinned_panels_manager import PinnedPanelsManager
 from styles.panel_styles import PanelStyles
 from utils.panel_resizer import PanelResizer
+from core.taskbar_minimizable_mixin import TaskbarMinimizableMixin
 
 # Get logger
 logger = logging.getLogger(__name__)
 
 
-class GlobalSearchPanel(QWidget):
+class GlobalSearchPanel(QWidget, TaskbarMinimizableMixin):
     """Floating window for global search across all items"""
 
     # Signal emitted when an item is clicked
@@ -74,6 +75,9 @@ class GlobalSearchPanel(QWidget):
         self.normal_width = None  # Ancho normal antes de minimizar
         self.normal_position = None  # Posición normal antes de minimizar
 
+        # FASE 4: Pin + minimize integration
+        self.pinned_position = None  # Posición anclada para restaurar después de minimizar
+
         # Pinned panels manager
         self.panels_manager = None
         if self.db_manager:
@@ -90,6 +94,15 @@ class GlobalSearchPanel(QWidget):
 
         # Flag para animación de entrada (primera vez)
         self._first_show = True
+
+        # Configurar minimización a taskbar (TaskbarMinimizableMixin)
+        self.entity_name = "🔍 Búsqueda Global"
+        self.entity_icon = "🔍"
+        self.setup_taskbar_minimization()
+
+        # FASE 4: Conectar señales para callbacks de minimización
+        self.minimized_to_taskbar.connect(self.on_minimized)
+        self.restored_from_taskbar.connect(self.on_restored)
 
         self.init_ui()
 
@@ -943,6 +956,9 @@ class GlobalSearchPanel(QWidget):
             self.unpin_panel()
         else:
             # Anclar panel directamente (sin diálogo, igual que FloatingPanel)
+            # FASE 4: Guardar posición al anclar
+            self.pinned_position = self.pos()
+            logger.info(f"[FASE 4] Panel anclado en posición: {self.pinned_position}")
             self.pin_panel()
 
     def show_pin_configuration_dialog(self):
@@ -1173,100 +1189,18 @@ class GlobalSearchPanel(QWidget):
             )
 
     def toggle_minimize(self):
-        """Toggle panel minimize state (only for pinned panels) - IGUAL QUE FloatingPanel"""
+        """
+        Minimizar panel a la barra de tareas avanzada (solo para paneles anclados)
+
+        NUEVO SISTEMA: Usa AdvancedTaskbarManager para minimización unificada
+        """
         if not self.is_pinned:
             logger.warning("Cannot minimize unpinned panel")
             return  # Only allow minimize for pinned panels
 
-        self.is_minimized = not self.is_minimized
-
-        if self.is_minimized:
-            # Save current size and position
-            self.normal_height = self.height()
-            self.normal_width = self.width()
-            self.normal_position = self.pos()
-            logger.info(f"Minimizing panel - saving size: {self.normal_width}x{self.normal_height}, position: {self.normal_position}")
-
-            # Hide content widgets
-            self.filters_button_widget.setVisible(False)
-            self.search_bar.setVisible(False)
-            self.scroll_area.setVisible(False)
-
-            # Hide display options widget if it exists
-            if hasattr(self, 'display_options_widget'):
-                self.display_options_widget.setVisible(False)
-
-            # Reduce header margins for compact look
-            self.header_layout.setContentsMargins(8, 3, 5, 3)
-
-            # Resize to compact size with better button visibility (height: 50px, width: 250px)
-            minimized_height = 50  # Increased from 32px for better button visibility
-            minimized_width = 250  # Increased from 180px to show all buttons
-            self.resize(minimized_width, minimized_height)
-
-            # Set fixed size to prevent unwanted resizing
-            self.setFixedSize(minimized_width, minimized_height)
-
-            # Move to bottom of screen (al ras de la barra de tareas)
-            from PyQt6.QtWidgets import QApplication
-            screen = QApplication.primaryScreen()
-            if screen:
-                screen_geometry = screen.availableGeometry()
-                # Position al ras de la barra de tareas (5px margin)
-                new_x = self.x()  # Keep same X position
-                new_y = screen_geometry.bottom() - minimized_height - 5  # 5px margin - al ras de taskbar
-                self.move(new_x, new_y)
-                logger.info(f"Moved minimized panel to bottom: ({new_x}, {new_y})")
-
-            # Update button
-            self.minimize_button.setText("□")
-            self.minimize_button.setToolTip("Maximizar panel")
-            logger.info(f"Panel '{self.header_label.text()}' MINIMIZADO")
-        else:
-            # Restore content widgets
-            self.filters_button_widget.setVisible(True)
-            self.search_bar.setVisible(True)
-            self.scroll_area.setVisible(True)
-
-            # Restore display options widget if it exists
-            if hasattr(self, 'display_options_widget'):
-                self.display_options_widget.setVisible(True)
-
-            # Restore header margins
-            self.header_layout.setContentsMargins(15, 10, 10, 10)
-
-            # CRITICAL: Remove fixed size constraint first (set to maximum QWidget size)
-            self.setFixedSize(16777215, 16777215)  # Maximum allowed size for QWidget
-
-            # CRITICAL: Restore proper size constraints for normal resizing
-            self.setMinimumWidth(300)
-            self.setMinimumHeight(400)
-            self.setMaximumWidth(16777215)  # No maximum width limit
-            self.setMaximumHeight(16777215)  # No maximum height limit
-
-            # Restore original size
-            if self.normal_height and self.normal_width:
-                self.resize(self.normal_width, self.normal_height)
-                logger.info(f"Restored panel size to: {self.normal_width}x{self.normal_height}")
-            else:
-                # Fallback: use default size
-                from PyQt6.QtWidgets import QApplication
-                screen = QApplication.primaryScreen()
-                if screen:
-                    screen_height = screen.availableGeometry().height()
-                    window_height = int(screen_height * 0.8)
-                    self.resize(self.panel_width, window_height)
-                    logger.info(f"Restored panel size to default: {self.panel_width}x{window_height}")
-
-            # Restore original position
-            if self.normal_position:
-                self.move(self.normal_position)
-                logger.info(f"Restored panel position to: {self.normal_position}")
-
-            # Update button
-            self.minimize_button.setText("−")
-            self.minimize_button.setToolTip("Minimizar panel")
-            logger.info(f"Panel '{self.header_label.text()}' MAXIMIZADO")
+        # Usar el nuevo sistema de minimización a taskbar
+        self.minimize_to_taskbar()
+        logger.info(f"Panel de búsqueda global minimizado a barra de tareas avanzada")
 
         # Guardar estado en BD
         if self.panel_id and self.panels_manager:
@@ -1984,3 +1918,17 @@ class GlobalSearchPanel(QWidget):
 
         # Guardar referencia para que no se destruya
         self._close_animation = animation
+
+    # FASE 4: Callbacks para integración anclaje + minimización
+    def on_minimized(self):
+        """Callback cuando el panel se minimiza a taskbar"""
+        logger.info(f"[FASE 4] GlobalSearchPanel minimizado - anclado={self.is_pinned}")
+
+    def on_restored(self):
+        """Callback cuando el panel se restaura desde taskbar"""
+        # Si está anclado y tiene posición guardada, restaurar a esa posición
+        if self.is_pinned and self.pinned_position:
+            self.move(self.pinned_position)
+            logger.info(f"[FASE 4] GlobalSearchPanel restaurado a posición anclada: {self.pinned_position}")
+        else:
+            logger.info(f"[FASE 4] GlobalSearchPanel restaurado (sin posición anclada)")

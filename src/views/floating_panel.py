@@ -26,12 +26,13 @@ from styles.animations import AnimationSystem, AnimationDurations
 from styles.effects import ParticleEffect, ScanLineEffect
 from styles.panel_styles import PanelStyles
 from utils.panel_resizer import PanelResizer
+from core.taskbar_minimizable_mixin import TaskbarMinimizableMixin
 
 # Get logger
 logger = logging.getLogger(__name__)
 
 
-class FloatingPanel(QWidget):
+class FloatingPanel(QWidget, TaskbarMinimizableMixin):
     """Floating window for displaying category items"""
 
     # Signal emitted when an item is clicked
@@ -67,6 +68,7 @@ class FloatingPanel(QWidget):
         self.normal_height = None  # Altura normal antes de minimizar
         self.normal_width = None  # Ancho normal antes de minimizar
         self.normal_position = None  # Posición normal antes de minimizar
+        self.pinned_position = None  # Posición cuando está anclado (FASE 4)
 
         # Panel persistence attributes
         self.panel_id = panel_id  # ID del panel en la base de datos (None si no está guardado)
@@ -92,6 +94,15 @@ class FloatingPanel(QWidget):
         self.update_timer.setSingleShot(True)
         self.update_timer.timeout.connect(self._save_panel_state_to_db)
         self.update_delay_ms = 1000  # 1 second delay after move/resize
+
+        # Configurar minimización a taskbar (TaskbarMinimizableMixin)
+        self.entity_name = "Panel de Categoría"  # Default, se actualizará en load_category
+        self.entity_icon = "📂"  # Default
+        self.setup_taskbar_minimization()
+
+        # Conectar señales de minimización/restauración (FASE 4)
+        self.minimized_to_taskbar.connect(self.on_minimized)
+        self.restored_from_taskbar.connect(self.on_restored)
 
         self.init_ui()
 
@@ -551,6 +562,10 @@ class FloatingPanel(QWidget):
         # Update header
         self.header_label.setText(category.name)
         logger.debug(f"Header updated to: {category.name}")
+
+        # Actualizar atributos de entidad para taskbar
+        self.entity_name = category.name
+        self.entity_icon = category.icon if hasattr(category, 'icon') and category.icon else "📂"
 
         # Update available tags in filters window (Fase 4)
         self.filters_window.update_available_tags(self.all_items)
@@ -1482,11 +1497,15 @@ class FloatingPanel(QWidget):
             self.filters_window.activateWindow()
 
     def toggle_pin(self):
-        """Toggle panel pin state"""
+        """Toggle panel pin state (FASE 4: integrado con minimización)"""
         self.is_pinned = not self.is_pinned
 
         # Update pin button appearance
         if self.is_pinned:
+            # Guardar posición al anclar (FASE 4)
+            self.pinned_position = self.pos()
+            logger.info(f"Panel anclado en posición: {self.pinned_position}")
+
             self.pin_button.setText("📍")  # Pinned icon
             self.pin_button.setStyleSheet("""
                 QPushButton {
@@ -1512,6 +1531,10 @@ class FloatingPanel(QWidget):
             self.config_button.setVisible(True)
             logger.info(f"Panel '{self.header_label.text()}' ANCLADO - puede abrir otros paneles")
         else:
+            # Limpiar posición anclada (FASE 4)
+            self.pinned_position = None
+            logger.info("Posición anclada limpiada")
+
             self.pin_button.setText("📌")  # Unpinned icon
             self.pin_button.setStyleSheet("""
                 QPushButton {
@@ -1536,9 +1559,9 @@ class FloatingPanel(QWidget):
             self.minimize_button.setVisible(False)
             self.config_button.setVisible(False)
 
-            # If panel was minimized, restore it before unpinning
-            if self.is_minimized:
-                self.toggle_minimize()  # Restore to normal state
+            # If panel was minimized to taskbar, restore it before unpinning
+            if getattr(self, '_is_minimized_to_taskbar', False):
+                self.restore_from_taskbar()  # Restore from advanced taskbar
 
             logger.info(f"Panel '{self.header_label.text()}' DESANCLADO")
 
@@ -1546,98 +1569,42 @@ class FloatingPanel(QWidget):
         self.pin_state_changed.emit(self.is_pinned)
 
     def toggle_minimize(self):
-        """Toggle panel minimize state (only for pinned panels)"""
+        """
+        Minimizar panel a la barra de tareas avanzada (solo para paneles anclados)
+
+        NUEVO SISTEMA: Usa AdvancedTaskbarManager para minimización unificada
+        """
         if not self.is_pinned:
             logger.warning("Cannot minimize unpinned panel")
             return  # Only allow minimize for pinned panels
 
-        self.is_minimized = not self.is_minimized
+        # Usar el nuevo sistema de minimización a taskbar
+        self.minimize_to_taskbar()
+        logger.info(f"Panel '{self.header_label.text()}' minimizado a barra de tareas avanzada")
 
-        if self.is_minimized:
-            # Save current size and position
-            self.normal_height = self.height()
-            self.normal_width = self.width()
-            self.normal_position = self.pos()
-            logger.info(f"Minimizing panel - saving size: {self.normal_width}x{self.normal_height}, position: {self.normal_position}")
+    def on_minimized(self):
+        """
+        Callback cuando el panel se minimiza a taskbar (FASE 4)
 
-            # Hide content widgets
-            self.filters_button_widget.setVisible(False)
-            self.search_bar.setVisible(False)
-            self.display_options_widget.setVisible(False)  # Hide display options checkboxes
-            self.scroll_area.setVisible(False)
+        Guarda el estado de anclaje para restaurarlo después
+        """
+        logger.info(f"[FASE 4] Panel minimizado - anclado={self.is_pinned}, posición={self.pinned_position}")
 
-            # Reduce header margins for compact look
-            self.header_layout.setContentsMargins(8, 3, 5, 3)
+        # El estado de anclaje se mantiene automáticamente
+        # La posición anclada ya está guardada en self.pinned_position
 
-            # CRITICAL: Remove size constraints temporarily to allow small size
-            self.setMinimumWidth(0)
-            self.setMinimumHeight(0)
+    def on_restored(self):
+        """
+        Callback cuando el panel se restaura desde taskbar (FASE 4)
 
-            # Resize to compact size (height: 50px for buttons visibility, width: ~250px)
-            minimized_height = 50  # Increased to 50px for better button visibility
-            minimized_width = 250  # Increased width to show all buttons
-            self.resize(minimized_width, minimized_height)
-
-            # Set fixed size when minimized to prevent unwanted resizing
-            self.setFixedSize(minimized_width, minimized_height)
-
-            # Move to bottom of screen (al ras de la barra de tareas)
-            from PyQt6.QtWidgets import QApplication
-            screen = QApplication.primaryScreen()
-            if screen:
-                screen_geometry = screen.availableGeometry()
-                # Position al ras de la barra de tareas (5px margin)
-                new_x = self.x()  # Keep same X position
-                new_y = screen_geometry.bottom() - minimized_height - 5  # 5px margin - al ras de taskbar
-                self.move(new_x, new_y)
-                logger.info(f"Moved minimized panel to bottom: ({new_x}, {new_y})")
-
-            # Update button
-            self.minimize_button.setText("□")
-            self.minimize_button.setToolTip("Maximizar panel")
-            logger.info(f"Panel '{self.header_label.text()}' MINIMIZADO")
+        Si el panel estaba anclado, lo restaura a la posición anclada
+        """
+        if self.is_pinned and self.pinned_position:
+            # Restaurar a posición anclada
+            self.move(self.pinned_position)
+            logger.info(f"[FASE 4] Panel restaurado a posición anclada: {self.pinned_position}")
         else:
-            # Restore content widgets
-            self.filters_button_widget.setVisible(True)
-            self.search_bar.setVisible(True)
-            self.display_options_widget.setVisible(True)  # Show display options checkboxes
-            self.scroll_area.setVisible(True)
-
-            # Restore header margins
-            self.header_layout.setContentsMargins(15, 10, 10, 10)
-
-            # Remove fixed size constraint to allow resizing again
-            self.setFixedSize(16777215, 16777215)  # Maximum QWidget size (effectively removes fixed size)
-
-            # CRITICAL: Restore size constraints
-            self.setMinimumWidth(PanelStyles.PANEL_WIDTH_MIN)
-            self.setMinimumHeight(PanelStyles.PANEL_HEIGHT_MIN)
-            self.setMaximumWidth(PanelStyles.PANEL_WIDTH_MAX)
-            self.setMaximumHeight(PanelStyles.PANEL_HEIGHT_MAX)
-
-            # Restore original size
-            if self.normal_height and self.normal_width:
-                self.resize(self.normal_width, self.normal_height)
-                logger.info(f"Restored panel size to: {self.normal_width}x{self.normal_height}")
-            else:
-                # Fallback: use default size
-                from PyQt6.QtWidgets import QApplication
-                screen = QApplication.primaryScreen()
-                if screen:
-                    screen_height = screen.availableGeometry().height()
-                    window_height = int(screen_height * 0.8)
-                    self.resize(self.panel_width, window_height)
-                    logger.info(f"Restored panel size to default: {self.panel_width}x{window_height}")
-
-            # Restore original position
-            if self.normal_position:
-                self.move(self.normal_position)
-                logger.info(f"Restored panel position to: {self.normal_position}")
-
-            # Update button
-            self.minimize_button.setText("−")
-            self.minimize_button.setToolTip("Minimizar panel")
-            logger.info(f"Panel '{self.header_label.text()}' MAXIMIZADO")
+            logger.info(f"[FASE 4] Panel restaurado sin posición anclada")
 
     def apply_custom_styling(self):
         """Apply custom color to panel header if custom_color is set"""
