@@ -852,12 +852,25 @@ class BulkItemCreatorDialog(QWidget):
 
             # Paso 5: Asociar tags de proyecto/área a la relación
             for project_tag_name in draft.project_element_tags:
-                project_tag_id = self.db.get_or_create_tag(project_tag_name)
-
+                # Obtener tag de proyecto (NO de tags global)
                 if is_project:
+                    project_tag = self.db.get_project_element_tag_by_name(project_tag_name)
+                    if not project_tag:
+                        # Si no existe, crearlo
+                        project_tag_id = self.db.add_project_element_tag(project_tag_name)
+                    else:
+                        project_tag_id = project_tag['id']
+
                     self.db.add_tag_to_project_relation(relation_id, project_tag_id)
                 else:
-                    self.db.assign_tag_to_area_relation(relation_id, project_tag_id)
+                    # Para áreas, usar tabla area_element_tags
+                    area_tag = self.db.get_area_element_tag_by_name(project_tag_name)
+                    if not area_tag:
+                        area_tag_id = self.db.add_area_element_tag(project_tag_name)
+                    else:
+                        area_tag_id = area_tag['id']
+
+                    self.db.assign_tag_to_area_relation(relation_id, area_tag_id)
 
                 logger.debug(f"Tag '{project_tag_name}' asociado a relación")
 
@@ -946,12 +959,25 @@ class BulkItemCreatorDialog(QWidget):
 
             # Paso 4: Asociar tags de proyecto/área a la relación
             for project_tag_name in draft.project_element_tags:
-                project_tag_id = self.db.get_or_create_tag(project_tag_name)
-
+                # Obtener tag de proyecto (NO de tags global)
                 if is_project:
+                    project_tag = self.db.get_project_element_tag_by_name(project_tag_name)
+                    if not project_tag:
+                        # Si no existe, crearlo
+                        project_tag_id = self.db.add_project_element_tag(project_tag_name)
+                    else:
+                        project_tag_id = project_tag['id']
+
                     self.db.add_tag_to_project_relation(relation_id, project_tag_id)
                 else:
-                    self.db.assign_tag_to_area_relation(relation_id, project_tag_id)
+                    # Para áreas, usar tabla area_element_tags
+                    area_tag = self.db.get_area_element_tag_by_name(project_tag_name)
+                    if not area_tag:
+                        area_tag_id = self.db.add_area_element_tag(project_tag_name)
+                    else:
+                        area_tag_id = area_tag['id']
+
+                    self.db.assign_tag_to_area_relation(relation_id, area_tag_id)
 
                 logger.debug(f"Tag '{project_tag_name}' asociado a lista")
 
