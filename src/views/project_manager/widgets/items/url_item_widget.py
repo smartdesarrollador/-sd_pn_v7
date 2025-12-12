@@ -7,7 +7,7 @@ Autor: Widget Sidebar Team
 Versión: 1.0
 """
 
-from PyQt6.QtWidgets import QLabel, QHBoxLayout
+from PyQt6.QtWidgets import QLabel, QHBoxLayout, QTextEdit, QSizePolicy
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QCursor
 from .base_item_widget import BaseItemWidget
@@ -63,19 +63,92 @@ class URLItemWidget(BaseItemWidget):
         title_layout.addStretch()
         self.content_layout.addLayout(title_layout)
 
-        # URL clickeable
+        # URL clickeable con scroll
         content = self.get_item_content()
         if content:
-            url_label = QLabel(content)
-            url_label.setObjectName("url_text")
-            url_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            url_label.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
+            url_text = QTextEdit()
+            url_text.setObjectName("url_text")
+            url_text.setPlainText(content)
+            url_text.setReadOnly(True)
+            url_text.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+            # Límite de altura máxima: 120px
+            url_text.setMaximumHeight(120)
+
+            # Establecer altura mínima para mejor visualización
+            url_text.setMinimumHeight(40)
+
+            # Política de tamaño: expandir horizontalmente, altura fija
+            url_text.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed
             )
-            url_label.setWordWrap(True)
-            url_label.mousePressEvent = lambda event: self.open_url(content)
-            url_label.setToolTip("Click para abrir en navegador")
-            self.content_layout.addWidget(url_label)
+
+            # Habilitar scrollbars según sea necesario
+            url_text.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+            url_text.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+
+            # Deshabilitar word wrap para permitir scroll horizontal
+            url_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+
+            url_text.mousePressEvent = lambda event: self.open_url(content)
+            url_text.setToolTip("Click para abrir en navegador")
+
+            url_text.setStyleSheet("""
+                QTextEdit {
+                    background-color: transparent;
+                    border: none;
+                    color: #5BA4E5;
+                    font-size: 13px;
+                    text-decoration: underline;
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                }
+                QTextEdit:hover {
+                    color: #6BB6FF;
+                }
+                QScrollBar:vertical {
+                    background-color: #2A2A2A;
+                    width: 8px;
+                    border-radius: 4px;
+                }
+                QScrollBar::handle:vertical {
+                    background-color: #505050;
+                    border-radius: 4px;
+                    min-height: 20px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background-color: #606060;
+                }
+                QScrollBar::add-line:vertical,
+                QScrollBar::sub-line:vertical {
+                    border: none;
+                    background: none;
+                }
+                QScrollBar:horizontal {
+                    background-color: #2A2A2A;
+                    height: 8px;
+                    border-radius: 4px;
+                }
+                QScrollBar::handle:horizontal {
+                    background-color: #505050;
+                    border-radius: 4px;
+                    min-width: 20px;
+                }
+                QScrollBar::handle:horizontal:hover {
+                    background-color: #606060;
+                }
+                QScrollBar::add-line:horizontal,
+                QScrollBar::sub-line:horizontal {
+                    border: none;
+                    background: none;
+                }
+            """)
+
+            self.content_layout.addWidget(url_text)
 
         # Descripción (si existe)
         description = self.get_item_description()

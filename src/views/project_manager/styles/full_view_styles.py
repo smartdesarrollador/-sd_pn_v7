@@ -153,6 +153,44 @@ class FullViewStyles:
                 line-height: 1.6;
                 font-family: 'Segoe UI', Arial, sans-serif;
             }}
+
+            QTextEdit#text_content QScrollBar:vertical {{
+                background-color: {Colors.SCROLLBAR_BG};
+                width: 8px;
+                border-radius: 4px;
+            }}
+
+            QTextEdit#text_content QScrollBar::handle:vertical {{
+                background-color: {Colors.SCROLLBAR_HANDLE};
+                border-radius: 4px;
+                min-height: 20px;
+            }}
+
+            QTextEdit#text_content QScrollBar::handle:vertical:hover {{
+                background-color: {Colors.SCROLLBAR_HANDLE_HOVER};
+            }}
+
+            QTextEdit#text_content QScrollBar:horizontal {{
+                background-color: {Colors.SCROLLBAR_BG};
+                height: 8px;
+                border-radius: 4px;
+            }}
+
+            QTextEdit#text_content QScrollBar::handle:horizontal {{
+                background-color: {Colors.SCROLLBAR_HANDLE};
+                border-radius: 4px;
+                min-width: 20px;
+            }}
+
+            QTextEdit#text_content QScrollBar::handle:horizontal:hover {{
+                background-color: {Colors.SCROLLBAR_HANDLE_HOVER};
+            }}
+
+            QTextEdit#text_content QScrollBar::add-line,
+            QTextEdit#text_content QScrollBar::sub-line {{
+                border: none;
+                background: none;
+            }}
         """
 
     @staticmethod
@@ -179,6 +217,44 @@ class FullViewStyles:
                 font-family: 'Consolas', 'Courier New', monospace;
                 font-size: 12px;
                 selection-background-color: {Colors.BORDER_CODE};
+            }}
+
+            QTextEdit#code_content QScrollBar:vertical {{
+                background-color: {Colors.SCROLLBAR_BG};
+                width: 8px;
+                border-radius: 4px;
+            }}
+
+            QTextEdit#code_content QScrollBar::handle:vertical {{
+                background-color: {Colors.SCROLLBAR_HANDLE};
+                border-radius: 4px;
+                min-height: 20px;
+            }}
+
+            QTextEdit#code_content QScrollBar::handle:vertical:hover {{
+                background-color: {Colors.SCROLLBAR_HANDLE_HOVER};
+            }}
+
+            QTextEdit#code_content QScrollBar:horizontal {{
+                background-color: {Colors.SCROLLBAR_BG};
+                height: 8px;
+                border-radius: 4px;
+            }}
+
+            QTextEdit#code_content QScrollBar::handle:horizontal {{
+                background-color: {Colors.SCROLLBAR_HANDLE};
+                border-radius: 4px;
+                min-width: 20px;
+            }}
+
+            QTextEdit#code_content QScrollBar::handle:horizontal:hover {{
+                background-color: {Colors.SCROLLBAR_HANDLE_HOVER};
+            }}
+
+            QTextEdit#code_content QScrollBar::add-line,
+            QTextEdit#code_content QScrollBar::sub-line {{
+                border: none;
+                background: none;
             }}
         """
 
@@ -209,6 +285,52 @@ class FullViewStyles:
             QLabel#url_text:hover {{
                 color: #6BB6FF;
             }}
+
+            QTextEdit#url_text {{
+                background-color: transparent;
+                border: none;
+                color: {Colors.TEXT_URL};
+                font-size: 13px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }}
+
+            QTextEdit#url_text QScrollBar:vertical {{
+                background-color: {Colors.SCROLLBAR_BG};
+                width: 8px;
+                border-radius: 4px;
+            }}
+
+            QTextEdit#url_text QScrollBar::handle:vertical {{
+                background-color: {Colors.SCROLLBAR_HANDLE};
+                border-radius: 4px;
+                min-height: 20px;
+            }}
+
+            QTextEdit#url_text QScrollBar::handle:vertical:hover {{
+                background-color: {Colors.SCROLLBAR_HANDLE_HOVER};
+            }}
+
+            QTextEdit#url_text QScrollBar:horizontal {{
+                background-color: {Colors.SCROLLBAR_BG};
+                height: 8px;
+                border-radius: 4px;
+            }}
+
+            QTextEdit#url_text QScrollBar::handle:horizontal {{
+                background-color: {Colors.SCROLLBAR_HANDLE};
+                border-radius: 4px;
+                min-width: 20px;
+            }}
+
+            QTextEdit#url_text QScrollBar::handle:horizontal:hover {{
+                background-color: {Colors.SCROLLBAR_HANDLE_HOVER};
+            }}
+
+            QTextEdit#url_text QScrollBar::add-line,
+            QTextEdit#url_text QScrollBar::sub-line {{
+                border: none;
+                background: none;
+            }}
         """
 
     @staticmethod
@@ -232,6 +354,52 @@ class FullViewStyles:
                 color: {Colors.TEXT_PATH};
                 font-family: 'Consolas', 'Courier New', monospace;
                 font-size: 12px;
+            }}
+
+            QTextEdit#path_text {{
+                background-color: transparent;
+                border: none;
+                color: {Colors.TEXT_PATH};
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 12px;
+            }}
+
+            QTextEdit#path_text QScrollBar:vertical {{
+                background-color: {Colors.SCROLLBAR_BG};
+                width: 8px;
+                border-radius: 4px;
+            }}
+
+            QTextEdit#path_text QScrollBar::handle:vertical {{
+                background-color: {Colors.SCROLLBAR_HANDLE};
+                border-radius: 4px;
+                min-height: 20px;
+            }}
+
+            QTextEdit#path_text QScrollBar::handle:vertical:hover {{
+                background-color: {Colors.SCROLLBAR_HANDLE_HOVER};
+            }}
+
+            QTextEdit#path_text QScrollBar:horizontal {{
+                background-color: {Colors.SCROLLBAR_BG};
+                height: 8px;
+                border-radius: 4px;
+            }}
+
+            QTextEdit#path_text QScrollBar::handle:horizontal {{
+                background-color: {Colors.SCROLLBAR_HANDLE};
+                border-radius: 4px;
+                min-width: 20px;
+            }}
+
+            QTextEdit#path_text QScrollBar::handle:horizontal:hover {{
+                background-color: {Colors.SCROLLBAR_HANDLE_HOVER};
+            }}
+
+            QTextEdit#path_text QScrollBar::add-line,
+            QTextEdit#path_text QScrollBar::sub-line {{
+                border: none;
+                background: none;
             }}
         """
 

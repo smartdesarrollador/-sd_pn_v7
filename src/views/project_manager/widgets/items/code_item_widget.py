@@ -8,7 +8,7 @@ Autor: Widget Sidebar Team
 Versión: 1.0
 """
 
-from PyQt6.QtWidgets import QTextEdit, QLabel
+from PyQt6.QtWidgets import QTextEdit, QLabel, QSizePolicy
 from PyQt6.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor, QFont
 from PyQt6.QtCore import Qt, QRegularExpression
 from .base_item_widget import BaseItemWidget
@@ -157,23 +157,28 @@ class CodeItemWidget(BaseItemWidget):
             self.code_editor.setReadOnly(True)
             self.code_editor.setFrameStyle(0)
 
-            # Si el contenido es extenso (>800 chars), limitar altura y agregar scroll
-            if len(content) > self.MAX_CONTENT_LENGTH:
-                self.code_editor.setMaximumHeight(250)  # Altura máxima con scroll
-                self.code_editor.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAsNeeded
-                )
-            else:
-                # Ajustar altura al contenido si es corto
-                doc_height = self.code_editor.document().size().height()
-                self.code_editor.setFixedHeight(int(doc_height) + 20)
-                self.code_editor.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-                )
+            # Límite de altura máxima: 300px
+            self.code_editor.setMaximumHeight(300)
 
-            self.code_editor.setHorizontalScrollBarPolicy(
-                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            # Establecer altura mínima para mejor visualización
+            self.code_editor.setMinimumHeight(60)
+
+            # Política de tamaño: expandir horizontalmente, altura fija
+            self.code_editor.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed
             )
+
+            # Habilitar scrollbars vertical y horizontal según sea necesario
+            self.code_editor.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+            self.code_editor.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+
+            # Deshabilitar word wrap para permitir scroll horizontal
+            self.code_editor.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
 
             # Aplicar syntax highlighting
             self.highlighter = CodeSyntaxHighlighter(

@@ -7,7 +7,7 @@ Autor: Widget Sidebar Team
 Versión: 1.0
 """
 
-from PyQt6.QtWidgets import QLabel, QHBoxLayout
+from PyQt6.QtWidgets import QLabel, QHBoxLayout, QTextEdit, QSizePolicy
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QCursor
 from .base_item_widget import BaseItemWidget
@@ -67,18 +67,87 @@ class PathItemWidget(BaseItemWidget):
         title_layout.addStretch()
         self.content_layout.addLayout(title_layout)
 
-        # Path clickeable
+        # Path clickeable con scroll
         if path_content:
-            path_label = QLabel(path_content)
-            path_label.setObjectName("path_text")
-            path_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            path_label.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
+            path_text = QTextEdit()
+            path_text.setObjectName("path_text")
+            path_text.setPlainText(path_content)
+            path_text.setReadOnly(True)
+            path_text.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+            # Límite de altura máxima: 150px
+            path_text.setMaximumHeight(150)
+
+            # Establecer altura mínima para mejor visualización
+            path_text.setMinimumHeight(40)
+
+            # Política de tamaño: expandir horizontalmente, altura fija
+            path_text.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed
             )
-            path_label.setWordWrap(True)
-            path_label.mousePressEvent = lambda event: self.open_path(path_content)
-            path_label.setToolTip("Click para abrir en explorador")
-            self.content_layout.addWidget(path_label)
+
+            # Habilitar scrollbars según sea necesario
+            path_text.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+            path_text.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+
+            # Deshabilitar word wrap para permitir scroll horizontal
+            path_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+
+            path_text.mousePressEvent = lambda event: self.open_path(path_content)
+            path_text.setToolTip("Click para abrir en explorador")
+
+            path_text.setStyleSheet("""
+                QTextEdit {
+                    background-color: transparent;
+                    border: none;
+                    color: #FFA500;
+                    font-family: 'Consolas', 'Courier New', monospace;
+                    font-size: 12px;
+                }
+                QScrollBar:vertical {
+                    background-color: #2A2A2A;
+                    width: 8px;
+                    border-radius: 4px;
+                }
+                QScrollBar::handle:vertical {
+                    background-color: #505050;
+                    border-radius: 4px;
+                    min-height: 20px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background-color: #606060;
+                }
+                QScrollBar::add-line:vertical,
+                QScrollBar::sub-line:vertical {
+                    border: none;
+                    background: none;
+                }
+                QScrollBar:horizontal {
+                    background-color: #2A2A2A;
+                    height: 8px;
+                    border-radius: 4px;
+                }
+                QScrollBar::handle:horizontal {
+                    background-color: #505050;
+                    border-radius: 4px;
+                    min-width: 20px;
+                }
+                QScrollBar::handle:horizontal:hover {
+                    background-color: #606060;
+                }
+                QScrollBar::add-line:horizontal,
+                QScrollBar::sub-line:horizontal {
+                    border: none;
+                    background: none;
+                }
+            """)
+
+            self.content_layout.addWidget(path_text)
 
         # Descripción (si existe)
         description = self.get_item_description()

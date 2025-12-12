@@ -58,13 +58,15 @@ class BaseItemWidget(QFrame):
         # Layout de contenido (vertical, izquierda)
         self.content_layout = QVBoxLayout()
         self.content_layout.setSpacing(6)
-        self.main_layout.addLayout(self.content_layout, 1)
+        self.main_layout.addLayout(self.content_layout, 1)  # stretch=1 para ocupar espacio disponible
 
-        # Botón de copiar (derecha)
+        # Botón de copiar (derecha, sin stretch)
         self.copy_button = CopyButton()
         self.copy_button.copy_clicked.connect(self.copy_to_clipboard)
+        self.copy_button.setFixedSize(32, 32)  # Tamaño fijo para el botón
         self.main_layout.addWidget(
             self.copy_button,
+            0,  # stretch=0 para mantener tamaño fijo
             alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight
         )
 

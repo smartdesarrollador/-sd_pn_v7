@@ -8,7 +8,7 @@ Autor: Widget Sidebar Team
 Versión: 1.0
 """
 
-from PyQt6.QtWidgets import QLabel, QTextEdit
+from PyQt6.QtWidgets import QLabel, QTextEdit, QSizePolicy
 from PyQt6.QtCore import Qt
 from .base_item_widget import BaseItemWidget
 from ...styles.full_view_styles import FullViewStyles
@@ -56,57 +56,82 @@ class TextItemWidget(BaseItemWidget):
         # Contenido
         content = self.get_item_content()
         if content:
-            # Si el contenido es extenso (>800 chars), usar QTextEdit con scroll
-            if len(content) > self.MAX_CONTENT_LENGTH:
-                content_text = QTextEdit()
-                content_text.setObjectName("text_content")
-                content_text.setPlainText(content)
-                content_text.setReadOnly(True)
-                content_text.setMaximumHeight(200)  # Altura máxima con scroll
-                content_text.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAsNeeded
-                )
-                content_text.setHorizontalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-                )
-                content_text.setStyleSheet("""
-                    QTextEdit {
-                        background-color: transparent;
-                        border: none;
-                        color: #E0E0E0;
-                        font-size: 13px;
-                        line-height: 1.6;
-                        font-family: 'Segoe UI', Arial, sans-serif;
-                    }
-                    QScrollBar:vertical {
-                        background-color: #2A2A2A;
-                        width: 8px;
-                        border-radius: 4px;
-                    }
-                    QScrollBar::handle:vertical {
-                        background-color: #505050;
-                        border-radius: 4px;
-                        min-height: 20px;
-                    }
-                    QScrollBar::handle:vertical:hover {
-                        background-color: #606060;
-                    }
-                    QScrollBar::add-line:vertical,
-                    QScrollBar::sub-line:vertical {
-                        border: none;
-                        background: none;
-                    }
-                """)
-                self.content_layout.addWidget(content_text)
-            else:
-                # Contenido normal sin scroll
-                content_label = QLabel(content)
-                content_label.setObjectName("text_content")
-                content_label.setWordWrap(True)
-                content_label.setTextInteractionFlags(
-                    Qt.TextInteractionFlag.TextSelectableByMouse
-                )
-                self.content_layout.addWidget(content_label)
+            # Usar QTextEdit con scroll para todo el contenido
+            content_text = QTextEdit()
+            content_text.setObjectName("text_content")
+            content_text.setPlainText(content)
+            content_text.setReadOnly(True)
+
+            # Límite de altura máxima: 300px
+            content_text.setMaximumHeight(300)
+
+            # Establecer altura mínima para mejor visualización
+            content_text.setMinimumHeight(60)
+
+            # Política de tamaño: expandir horizontalmente, altura fija
+            content_text.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed
+            )
+
+            # Habilitar scrollbars vertical y horizontal según sea necesario
+            content_text.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+            content_text.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
+
+            # Deshabilitar word wrap para permitir scroll horizontal
+            content_text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+
+            content_text.setStyleSheet("""
+                QTextEdit {
+                    background-color: transparent;
+                    border: none;
+                    color: #E0E0E0;
+                    font-size: 13px;
+                    line-height: 1.6;
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                }
+                QScrollBar:vertical {
+                    background-color: #2A2A2A;
+                    width: 8px;
+                    border-radius: 4px;
+                }
+                QScrollBar::handle:vertical {
+                    background-color: #505050;
+                    border-radius: 4px;
+                    min-height: 20px;
+                }
+                QScrollBar::handle:vertical:hover {
+                    background-color: #606060;
+                }
+                QScrollBar::add-line:vertical,
+                QScrollBar::sub-line:vertical {
+                    border: none;
+                    background: none;
+                }
+                QScrollBar:horizontal {
+                    background-color: #2A2A2A;
+                    height: 8px;
+                    border-radius: 4px;
+                }
+                QScrollBar::handle:horizontal {
+                    background-color: #505050;
+                    border-radius: 4px;
+                    min-width: 20px;
+                }
+                QScrollBar::handle:horizontal:hover {
+                    background-color: #606060;
+                }
+                QScrollBar::add-line:horizontal,
+                QScrollBar::sub-line:horizontal {
+                    border: none;
+                    background: none;
+                }
+            """)
+            self.content_layout.addWidget(content_text)
 
         # Descripción (si existe)
         description = self.get_item_description()
