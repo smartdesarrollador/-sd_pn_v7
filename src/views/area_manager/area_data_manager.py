@@ -262,7 +262,8 @@ class AreaDataManager:
                 'label': item.get('label', 'Item sin nombre'),
                 'content': item.get('content', ''),
                 'type': item.get('type', 'TEXT'),
-                'description': item.get('description', '')
+                'description': item.get('description', ''),
+                'is_sensitive': item.get('is_sensitive', False)
             })
         return formatted_items
 
@@ -357,7 +358,8 @@ class AreaDataManager:
                     'label': item.get('label', 'Item sin nombre'),
                     'content': item.get('content', ''),
                     'type': item.get('type', 'TEXT'),
-                    'description': item.get('description', '')
+                    'description': item.get('description', ''),
+                    'is_sensitive': item.get('is_sensitive', False)
                 })
 
         return ungrouped

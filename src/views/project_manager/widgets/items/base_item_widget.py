@@ -114,10 +114,24 @@ class BaseItemWidget(QFrame):
         """
         Obtener contenido del item
 
+        Si el item es sensible (is_sensitive=True), retorna
+        el contenido enmascarado para proteger la información.
+
         Returns:
-            Contenido del item o string vacío si no existe
+            Contenido del item o string vacío si no existe.
+            Si es sensible, retorna contenido enmascarado.
         """
-        return self.item_data.get('content', '')
+        content = self.item_data.get('content', '')
+        is_sensitive = self.item_data.get('is_sensitive', False)
+
+        # Si el item es sensible, enmascarar el contenido
+        if is_sensitive and content:
+            # Calcular longitud aproximada para el enmascaramiento
+            # Usar puntos circulares (bullets) para enmascarar
+            mask_length = min(len(content), 20)  # Máximo 20 bullets
+            return '•' * mask_length + (' ...' if len(content) > 20 else '')
+
+        return content
 
     def get_item_description(self) -> str:
         """
