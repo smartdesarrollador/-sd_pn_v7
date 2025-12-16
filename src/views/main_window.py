@@ -567,30 +567,24 @@ class MainWindow(QMainWindow):
 
             # Obtener el item completo desde la BD
             db = self.config_manager.db
-            item_data = db.get_item_by_id(item_id)
+            item_data = db.get_item(item_id)
 
             if not item_data:
                 logger.error(f"Item {item_id} not found")
                 QMessageBox.warning(self, "Error", "Item no encontrado")
                 return
 
-            # Crear objeto Item desde dict
+            # Guardar category_id antes de crear el Item (no es parte del modelo Item)
+            category_id = item_data.get('category_id')
+
+            # Crear objeto Item desde dict usando el método from_dict
             from models.item import Item
-            item = Item(
-                id=item_data['id'],
-                label=item_data['label'],
-                content=item_data['content'],
-                item_type=item_data.get('item_type', 'TEXT'),
-                category_id=item_data.get('category_id'),
-                is_sensitive=item_data.get('is_sensitive', False),
-                description=item_data.get('description', ''),
-                tags=item_data.get('tags', [])
-            )
+            item = Item.from_dict(item_data)
 
             # Abrir ItemEditorDialog
             dialog = ItemEditorDialog(
                 item=item,
-                category_id=item.category_id,
+                category_id=category_id,
                 controller=self.controller,
                 parent=self
             )
