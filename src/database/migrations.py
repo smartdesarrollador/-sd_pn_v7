@@ -723,6 +723,193 @@ def migration_005_add_item_drafts_table(db: DBManager) -> None:
         raise
 
 
+def migration_006_create_calendar_and_alerts(db: DBManager) -> None:
+    """
+    Migración 006: Sistema SIMPLE de Calendario y Alertas
+
+    Esta migración:
+    1. Crea tabla 'calendar_events' - Eventos de calendario vinculados a items
+    2. Crea tabla 'item_alerts' - Alertas y notificaciones para items
+    3. Crea tabla 'alert_history' - Historial de alertas disparadas
+    4. Crea índices básicos para optimización
+
+    NOTA: Versión SIMPLIFICADA sin recurrencia compleja
+
+    Args:
+        db: DBManager instance
+    """
+    try:
+        print("\n" + "=" * 80)
+        print("🔄 MIGRACIÓN 006: Sistema SIMPLE de Calendario y Alertas")
+        print("=" * 80)
+
+        conn = db.connect()
+        cursor = conn.cursor()
+
+        # Verificar si las tablas ya existen
+        cursor.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name IN ('calendar_events', 'item_alerts', 'alert_history')
+        """)
+        existing_tables = [row[0] for row in cursor.fetchall()]
+
+        if len(existing_tables) == 3:
+            print("⚠️  Las tablas de calendario y alertas ya existen.")
+            print("   Saltando creación de tablas...")
+            return
+
+        # ========== PASO 1: Crear tabla calendar_events ==========
+        print("\n[1/6] Creando tabla 'calendar_events'...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                event_datetime TIMESTAMP NOT NULL,
+                title TEXT,
+                description TEXT,
+                event_type TEXT DEFAULT 'reminder',
+                priority TEXT DEFAULT 'medium',
+                status TEXT DEFAULT 'pending',
+                color TEXT,
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()
+        print("   ✓ Tabla 'calendar_events' creada")
+
+        # ========== PASO 2: Crear índices para calendar_events ==========
+        print("\n[2/6] Creando índices para 'calendar_events'...")
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_calendar_events_item
+            ON calendar_events(item_id)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_calendar_events_datetime
+            ON calendar_events(event_datetime)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_calendar_events_status
+            ON calendar_events(status)
+        """)
+
+        conn.commit()
+        print("   ✓ Índices creados: idx_calendar_events_item, idx_calendar_events_datetime, idx_calendar_events_status")
+
+        # ========== PASO 3: Crear tabla item_alerts ==========
+        print("\n[3/6] Creando tabla 'item_alerts'...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS item_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                calendar_event_id INTEGER,
+                alert_datetime TIMESTAMP NOT NULL,
+                alert_title TEXT,
+                alert_message TEXT,
+                priority TEXT DEFAULT 'medium',
+                status TEXT DEFAULT 'active',
+                is_enabled BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+                FOREIGN KEY (calendar_event_id) REFERENCES calendar_events(id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()
+        print("   ✓ Tabla 'item_alerts' creada")
+
+        # ========== PASO 4: Crear índices para item_alerts ==========
+        print("\n[4/6] Creando índices para 'item_alerts'...")
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_item_alerts_item
+            ON item_alerts(item_id)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_item_alerts_datetime
+            ON item_alerts(alert_datetime)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_item_alerts_status
+            ON item_alerts(status, is_enabled)
+        """)
+
+        conn.commit()
+        print("   ✓ Índices creados: idx_item_alerts_item, idx_item_alerts_datetime, idx_item_alerts_status")
+
+        # ========== PASO 5: Crear tabla alert_history ==========
+        print("\n[5/6] Creando tabla 'alert_history'...")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alert_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_id INTEGER,
+                item_id INTEGER NOT NULL,
+                triggered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                user_action TEXT,
+                FOREIGN KEY (alert_id) REFERENCES item_alerts(id) ON DELETE SET NULL,
+                FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+            )
+        """)
+        conn.commit()
+        print("   ✓ Tabla 'alert_history' creada")
+
+        # ========== PASO 6: Crear índices para alert_history ==========
+        print("\n[6/6] Creando índices para 'alert_history'...")
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alert_history_item
+            ON alert_history(item_id)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alert_history_triggered
+            ON alert_history(triggered_at DESC)
+        """)
+
+        conn.commit()
+        print("   ✓ Índices creados: idx_alert_history_item, idx_alert_history_triggered")
+
+        # ========== Verificación final ==========
+        print("\n" + "=" * 80)
+        print("✅ MIGRACIÓN 006 COMPLETADA EXITOSAMENTE")
+        print("=" * 80)
+
+        print("\n📋 Tablas creadas:")
+        print("\n1. calendar_events (Eventos de calendario)")
+        print("   • id, item_id, event_datetime, title, description")
+        print("   • event_type (reminder/deadline/task)")
+        print("   • priority (low/medium/high), status (pending/completed/cancelled)")
+        print("   • Índices: item_id, event_datetime, status")
+
+        print("\n2. item_alerts (Alertas y notificaciones)")
+        print("   • id, item_id, calendar_event_id (opcional)")
+        print("   • alert_datetime, alert_title, alert_message")
+        print("   • priority, status (active/triggered/dismissed)")
+        print("   • Índices: item_id, alert_datetime, status+is_enabled")
+
+        print("\n3. alert_history (Historial de alertas)")
+        print("   • id, alert_id, item_id")
+        print("   • triggered_at, user_action")
+        print("   • Índices: item_id, triggered_at")
+
+        print("\n✅ Sistema de Calendario y Alertas listo para usar")
+        print("=" * 80)
+
+    except Exception as e:
+        logger.error(f"❌ Error en migración 006: {e}")
+        print(f"\n❌ Error durante migración 006: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+
 if __name__ == "__main__":
     """
     Run migration when script is executed directly

@@ -9327,6 +9327,542 @@ class DBManager:
             logger.error(f"Error en get_recent_items: {e}", exc_info=True)
             return []
 
+    # ==================== CALENDARIO Y ALERTAS ====================
+    # Métodos CRUD para el sistema de calendario y alertas
+    # Total: 17 métodos (8 eventos + 7 alertas + 2 historial)
+
+    # ---------- calendar_events (8 métodos) ----------
+
+    def add_calendar_event(
+        self,
+        item_id: int,
+        event_datetime: str,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        event_type: str = 'reminder',
+        priority: str = 'medium',
+        status: str = 'pending',
+        color: Optional[str] = None
+    ) -> int:
+        """
+        Crear un nuevo evento de calendario
+
+        Args:
+            item_id: ID del item asociado
+            event_datetime: Fecha/hora del evento (formato: 'YYYY-MM-DD HH:MM:SS')
+            title: Título del evento (opcional, usa item.label si es None)
+            description: Descripción (opcional, usa item.content si es None)
+            event_type: Tipo de evento (reminder/deadline/task)
+            priority: Prioridad (low/medium/high)
+            status: Estado (pending/completed/cancelled)
+            color: Color personalizado (opcional)
+
+        Returns:
+            int: ID del evento creado
+        """
+        try:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    INSERT INTO calendar_events (
+                        item_id, event_datetime, title, description,
+                        event_type, priority, status, color
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (item_id, event_datetime, title, description,
+                      event_type, priority, status, color))
+
+                event_id = cursor.lastrowid
+                logger.info(f"Evento creado: ID={event_id}, item_id={item_id}")
+                return event_id
+
+        except Exception as e:
+            logger.error(f"Error al crear evento: {e}", exc_info=True)
+            raise
+
+    def get_calendar_event(self, event_id: int) -> Optional[Dict]:
+        """
+        Obtener un evento por ID
+
+        Args:
+            event_id: ID del evento
+
+        Returns:
+            Dict con datos del evento o None si no existe
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM calendar_events WHERE id = ?
+            """, (event_id,))
+
+            row = cursor.fetchone()
+            if row:
+                columns = [desc[0] for desc in cursor.description]
+                return dict(zip(columns, row))
+            return None
+
+        except Exception as e:
+            logger.error(f"Error al obtener evento {event_id}: {e}")
+            return None
+
+    def get_events_by_item(self, item_id: int) -> List[Dict]:
+        """
+        Obtener todos los eventos de un item
+
+        Args:
+            item_id: ID del item
+
+        Returns:
+            Lista de eventos del item
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM calendar_events
+                WHERE item_id = ? AND is_active = 1
+                ORDER BY event_datetime ASC
+            """, (item_id,))
+
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error al obtener eventos del item {item_id}: {e}")
+            return []
+
+    def get_events_by_month(self, year: int, month: int) -> List[Dict]:
+        """
+        Obtener eventos de un mes específico
+
+        Args:
+            year: Año (ej: 2025)
+            month: Mes (1-12)
+
+        Returns:
+            Lista de eventos del mes
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+
+            # Crear rango de fechas para el mes
+            start_date = f"{year:04d}-{month:02d}-01 00:00:00"
+            if month == 12:
+                end_date = f"{year+1:04d}-01-01 00:00:00"
+            else:
+                end_date = f"{year:04d}-{month+1:02d}-01 00:00:00"
+
+            cursor.execute("""
+                SELECT e.*, i.label as item_label, i.content as item_content
+                FROM calendar_events e
+                JOIN items i ON e.item_id = i.id
+                WHERE e.event_datetime >= ? AND e.event_datetime < ?
+                  AND e.is_active = 1
+                ORDER BY e.event_datetime ASC
+            """, (start_date, end_date))
+
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error al obtener eventos del mes {year}-{month}: {e}")
+            return []
+
+    def get_upcoming_events(self, days: int = 7) -> List[Dict]:
+        """
+        Obtener eventos próximos (siguientes N días)
+
+        Args:
+            days: Número de días a futuro (default: 7)
+
+        Returns:
+            Lista de eventos próximos
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT e.*, i.label as item_label
+                FROM calendar_events e
+                JOIN items i ON e.item_id = i.id
+                WHERE e.event_datetime >= datetime('now')
+                  AND e.event_datetime <= datetime('now', '+' || ? || ' days')
+                  AND e.is_active = 1
+                  AND e.status = 'pending'
+                ORDER BY e.event_datetime ASC
+            """, (days,))
+
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error al obtener eventos próximos: {e}")
+            return []
+
+    def update_calendar_event(self, event_id: int, **kwargs) -> bool:
+        """
+        Actualizar un evento de calendario
+
+        Args:
+            event_id: ID del evento
+            **kwargs: Campos a actualizar (title, description, event_datetime, etc.)
+
+        Returns:
+            bool: True si se actualizó correctamente
+        """
+        try:
+            # Campos permitidos para actualizar
+            allowed_fields = [
+                'title', 'description', 'event_datetime', 'event_type',
+                'priority', 'status', 'color', 'is_active'
+            ]
+
+            # Filtrar solo campos permitidos
+            updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+
+            if not updates:
+                logger.warning("No hay campos para actualizar")
+                return False
+
+            # Construir query
+            set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
+            set_clause += ", updated_at = CURRENT_TIMESTAMP"
+
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"""
+                    UPDATE calendar_events
+                    SET {set_clause}
+                    WHERE id = ?
+                """, (*updates.values(), event_id))
+
+                if cursor.rowcount > 0:
+                    logger.info(f"Evento {event_id} actualizado")
+                    return True
+                return False
+
+        except Exception as e:
+            logger.error(f"Error al actualizar evento {event_id}: {e}")
+            return False
+
+    def mark_event_completed(self, event_id: int) -> bool:
+        """
+        Marcar un evento como completado
+
+        Args:
+            event_id: ID del evento
+
+        Returns:
+            bool: True si se marcó correctamente
+        """
+        return self.update_calendar_event(event_id, status='completed')
+
+    def delete_calendar_event(self, event_id: int) -> bool:
+        """
+        Eliminar un evento de calendario
+
+        Args:
+            event_id: ID del evento
+
+        Returns:
+            bool: True si se eliminó correctamente
+        """
+        try:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM calendar_events WHERE id = ?", (event_id,))
+
+                if cursor.rowcount > 0:
+                    logger.info(f"Evento {event_id} eliminado")
+                    return True
+                return False
+
+        except Exception as e:
+            logger.error(f"Error al eliminar evento {event_id}: {e}")
+            return False
+
+    # ---------- item_alerts (7 métodos) ----------
+
+    def add_item_alert(
+        self,
+        item_id: int,
+        alert_datetime: str,
+        alert_title: Optional[str] = None,
+        alert_message: Optional[str] = None,
+        calendar_event_id: Optional[int] = None,
+        priority: str = 'medium'
+    ) -> int:
+        """
+        Crear una nueva alerta para un item
+
+        Args:
+            item_id: ID del item asociado
+            alert_datetime: Fecha/hora de la alerta (formato: 'YYYY-MM-DD HH:MM:SS')
+            alert_title: Título de la alerta (opcional)
+            alert_message: Mensaje de la alerta (opcional)
+            calendar_event_id: ID del evento asociado (opcional)
+            priority: Prioridad (low/medium/high/critical)
+
+        Returns:
+            int: ID de la alerta creada
+        """
+        try:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    INSERT INTO item_alerts (
+                        item_id, calendar_event_id, alert_datetime,
+                        alert_title, alert_message, priority
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                """, (item_id, calendar_event_id, alert_datetime,
+                      alert_title, alert_message, priority))
+
+                alert_id = cursor.lastrowid
+                logger.info(f"Alerta creada: ID={alert_id}, item_id={item_id}")
+                return alert_id
+
+        except Exception as e:
+            logger.error(f"Error al crear alerta: {e}", exc_info=True)
+            raise
+
+    def get_item_alert(self, alert_id: int) -> Optional[Dict]:
+        """
+        Obtener una alerta por ID
+
+        Args:
+            alert_id: ID de la alerta
+
+        Returns:
+            Dict con datos de la alerta o None si no existe
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM item_alerts WHERE id = ?
+            """, (alert_id,))
+
+            row = cursor.fetchone()
+            if row:
+                columns = [desc[0] for desc in cursor.description]
+                return dict(zip(columns, row))
+            return None
+
+        except Exception as e:
+            logger.error(f"Error al obtener alerta {alert_id}: {e}")
+            return None
+
+    def get_alerts_by_item(self, item_id: int) -> List[Dict]:
+        """
+        Obtener todas las alertas de un item
+
+        Args:
+            item_id: ID del item
+
+        Returns:
+            Lista de alertas del item
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM item_alerts
+                WHERE item_id = ? AND is_enabled = 1
+                ORDER BY alert_datetime ASC
+            """, (item_id,))
+
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error al obtener alertas del item {item_id}: {e}")
+            return []
+
+    def get_pending_alerts(self, minutes_ahead: int = 5) -> List[Dict]:
+        """
+        Obtener alertas pendientes que deben dispararse ahora
+
+        Busca alertas cuyo tiempo ha llegado o está por llegar (próximo minuto).
+        Una vez disparadas, su status cambia a 'triggered', por lo que no se repiten.
+
+        Args:
+            minutes_ahead: Lookahead en minutos (default: 5, se usa para el próximo minuto)
+
+        Returns:
+            Lista de alertas que deben dispararse ahora
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+
+            # Buscar alertas cuyo tiempo ya llegó o llegará en el próximo minuto
+            # No necesitamos lower bound porque status='active' evita re-disparar
+            cursor.execute("""
+                SELECT a.*, i.label as item_label, i.content as item_content
+                FROM item_alerts a
+                JOIN items i ON a.item_id = i.id
+                WHERE a.alert_datetime <= datetime('now', '+1 minute')
+                  AND a.status = 'active'
+                  AND a.is_enabled = 1
+                ORDER BY a.alert_datetime ASC
+            """)
+
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error al obtener alertas pendientes: {e}")
+            return []
+
+    def update_item_alert(self, alert_id: int, **kwargs) -> bool:
+        """
+        Actualizar una alerta
+
+        Args:
+            alert_id: ID de la alerta
+            **kwargs: Campos a actualizar
+
+        Returns:
+            bool: True si se actualizó correctamente
+        """
+        try:
+            allowed_fields = [
+                'alert_datetime', 'alert_title', 'alert_message',
+                'priority', 'status', 'is_enabled'
+            ]
+
+            updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+
+            if not updates:
+                return False
+
+            set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
+            set_clause += ", updated_at = CURRENT_TIMESTAMP"
+
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"""
+                    UPDATE item_alerts
+                    SET {set_clause}
+                    WHERE id = ?
+                """, (*updates.values(), alert_id))
+
+                return cursor.rowcount > 0
+
+        except Exception as e:
+            logger.error(f"Error al actualizar alerta {alert_id}: {e}")
+            return False
+
+    def dismiss_alert(self, alert_id: int) -> bool:
+        """
+        Marcar una alerta como dismissed (descartada)
+
+        Args:
+            alert_id: ID de la alerta
+
+        Returns:
+            bool: True si se marcó correctamente
+        """
+        return self.update_item_alert(alert_id, status='dismissed')
+
+    def delete_item_alert(self, alert_id: int) -> bool:
+        """
+        Eliminar una alerta
+
+        Args:
+            alert_id: ID de la alerta
+
+        Returns:
+            bool: True si se eliminó correctamente
+        """
+        try:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM item_alerts WHERE id = ?", (alert_id,))
+
+                if cursor.rowcount > 0:
+                    logger.info(f"Alerta {alert_id} eliminada")
+                    return True
+                return False
+
+        except Exception as e:
+            logger.error(f"Error al eliminar alerta {alert_id}: {e}")
+            return False
+
+    # ---------- alert_history (2 métodos) ----------
+
+    def add_alert_history(
+        self,
+        alert_id: int,
+        item_id: int,
+        user_action: str
+    ) -> int:
+        """
+        Registrar una entrada en el historial de alertas
+
+        Args:
+            alert_id: ID de la alerta
+            item_id: ID del item
+            user_action: Acción del usuario (dismissed/ignored/opened_item)
+
+        Returns:
+            int: ID del registro de historial
+        """
+        try:
+            with self.transaction() as conn:
+                cursor = conn.cursor()
+
+                cursor.execute("""
+                    INSERT INTO alert_history (alert_id, item_id, user_action)
+                    VALUES (?, ?, ?)
+                """, (alert_id, item_id, user_action))
+
+                history_id = cursor.lastrowid
+                logger.debug(f"Historial de alerta creado: ID={history_id}")
+                return history_id
+
+        except Exception as e:
+            logger.error(f"Error al crear historial de alerta: {e}")
+            raise
+
+    def get_alert_history_by_item(self, item_id: int, limit: int = 20) -> List[Dict]:
+        """
+        Obtener historial de alertas de un item
+
+        Args:
+            item_id: ID del item
+            limit: Número máximo de registros (default: 20)
+
+        Returns:
+            Lista de registros de historial
+        """
+        try:
+            conn = self.connect()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM alert_history
+                WHERE item_id = ?
+                ORDER BY triggered_at DESC
+                LIMIT ?
+            """, (item_id, limit))
+
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        except Exception as e:
+            logger.error(f"Error al obtener historial del item {item_id}: {e}")
+            return []
+
     # ==================== Context Manager ====================
 
     def __enter__(self):

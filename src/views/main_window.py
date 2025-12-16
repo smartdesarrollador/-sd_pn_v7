@@ -19,6 +19,7 @@ from views.advanced_search import AdvancedSearchWindow
 from views.favorites_floating_panel import FavoritesFloatingPanel
 from views.stats_floating_panel import StatsFloatingPanel
 from views.settings_window import SettingsWindow
+from views.calendar_window import CalendarWindow
 from views.pinned_panels_window import PinnedPanelsWindow
 from views.pinned_panels_manager_window import PinnedPanelsManagerWindow
 from views.dialogs.popular_items_dialog import PopularItemsDialog
@@ -226,6 +227,9 @@ class MainWindow(QMainWindow):
         self.sidebar.browser_clicked.connect(self.on_browser_clicked)
         self.sidebar.dashboard_clicked.connect(self.open_structure_dashboard)
         self.sidebar.settings_clicked.connect(self.open_settings)
+        logger.info("📅 Connecting calendar_clicked signal to open_calendar method...")
+        self.sidebar.calendar_clicked.connect(self.open_calendar)
+        logger.info("📅 Calendar signal connected successfully!")
         self.sidebar.component_manager_clicked.connect(self.open_component_manager)
         self.sidebar.category_filter_clicked.connect(self.on_category_filter_clicked)
         self.sidebar.category_manager_clicked.connect(self.on_category_manager_clicked)  # NEW
@@ -2294,6 +2298,27 @@ class MainWindow(QMainWindow):
     def show_settings(self):
         """Show settings dialog (called from tray)"""
         self.open_settings()
+
+    def open_calendar(self):
+        """Open calendar window"""
+        logger.info("=== OPEN CALENDAR REQUESTED ===")
+
+        if not hasattr(self, 'calendar_window') or not self.calendar_window.isVisible():
+            logger.info("Creating new CalendarWindow instance...")
+            self.calendar_window = CalendarWindow(self.controller, self)
+            logger.info(f"CalendarWindow created - Position: {self.calendar_window.pos()}, Size: {self.calendar_window.size()}")
+            logger.info("Calling show() on CalendarWindow...")
+            self.calendar_window.show()
+            logger.info(f"show() called - isVisible: {self.calendar_window.isVisible()}, isHidden: {self.calendar_window.isHidden()}")
+            logger.info("Raising and activating window...")
+            self.calendar_window.raise_()
+            self.calendar_window.activateWindow()
+            logger.info("CalendarWindow should now be visible!")
+        else:
+            logger.info("CalendarWindow already exists - raising and activating...")
+            self.calendar_window.raise_()
+            self.calendar_window.activateWindow()
+            logger.info(f"Window raised - isVisible: {self.calendar_window.isVisible()}")
 
     def open_component_manager(self):
         """Open component manager dialog"""

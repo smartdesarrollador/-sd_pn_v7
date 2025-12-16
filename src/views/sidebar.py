@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QFont
 from typing import List
 import sys
+import logging
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -13,6 +14,8 @@ from models.category import Category
 from views.widgets.button_widget import CategoryButton
 from styles.futuristic_theme import get_theme
 from styles.effects import ScanLineEffect
+
+logger = logging.getLogger(__name__)
 
 
 class Sidebar(QWidget):
@@ -44,6 +47,9 @@ class Sidebar(QWidget):
 
     # Signal emitted when category filter button is clicked
     category_filter_clicked = pyqtSignal()
+
+    # Signal emitted when calendar button is clicked
+    calendar_clicked = pyqtSignal()
 
     # Signal emitted when category manager button is clicked
     category_manager_clicked = pyqtSignal()  # NEW
@@ -560,6 +566,35 @@ class Sidebar(QWidget):
         self.browser_button.clicked.connect(self.on_browser_clicked)
         main_layout.addWidget(self.browser_button)
 
+        # Calendar button
+        self.calendar_button = QPushButton("📅")
+        self.calendar_button.setFixedSize(70, 45)
+        self.calendar_button.setToolTip("Calendario y Alertas")
+        self.calendar_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.calendar_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.get_color('background_deep')};
+                color: {self.theme.get_color('text_secondary')};
+                border: none;
+                border-top: 2px solid {self.theme.get_color('surface')};
+                font-size: 16pt;
+            }}
+            QPushButton:hover {{
+                background-color: {self.theme.get_color('surface')};
+                color: {self.theme.get_color('primary')};
+            }}
+            QPushButton:pressed {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {self.theme.get_color('primary')},
+                    stop:1 {self.theme.get_color('accent')}
+                );
+                color: {self.theme.get_color('text_primary')};
+            }}
+        """)
+        self.calendar_button.clicked.connect(self.on_calendar_clicked)
+        main_layout.addWidget(self.calendar_button)
+
         # Settings button at the bottom
         self.settings_button = QPushButton("⚙")
         self.settings_button.setFixedSize(70, 45)
@@ -798,6 +833,12 @@ class Sidebar(QWidget):
     def on_settings_clicked(self):
         """Handle settings button click"""
         self.settings_clicked.emit()
+
+    def on_calendar_clicked(self):
+        """Handle calendar button click"""
+        logger.info("📅 Calendar button clicked - emitting signal")
+        self.calendar_clicked.emit()
+        logger.info("📅 calendar_clicked signal emitted")
 
     def on_component_manager_clicked(self):
         """Handle component manager button click"""
