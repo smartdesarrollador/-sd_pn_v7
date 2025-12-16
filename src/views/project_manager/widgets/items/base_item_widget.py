@@ -8,11 +8,12 @@ Autor: Widget Sidebar Team
 Versión: 1.0
 """
 
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout
+from PyQt6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal
 from abc import abstractmethod
 from ..common.copy_button import CopyButton
 import pyperclip
+import re
 
 
 class BaseItemWidget(QFrame):
@@ -172,3 +173,119 @@ class BaseItemWidget(QFrame):
         """
         content = self.get_item_content()
         return len(content) > max_length
+
+    def has_match(self, search_text: str) -> bool:
+        """
+        Verificar si el item coincide con el texto de búsqueda
+
+        Busca en: label, content (sin enmascarar), y description
+
+        Args:
+            search_text: Texto a buscar (case-insensitive)
+
+        Returns:
+            True si hay coincidencia en algún campo
+        """
+        if not search_text:
+            return False
+
+        search_lower = search_text.lower()
+
+        # Buscar en label
+        label = self.get_item_label()
+        if label and search_lower in label.lower():
+            return True
+
+        # Buscar en content (sin enmascarar)
+        content = self.item_data.get('content', '')
+        if content and search_lower in content.lower():
+            return True
+
+        # Buscar en description
+        description = self.get_item_description()
+        if description and search_lower in description.lower():
+            return True
+
+        return False
+
+    def highlight_text(self, search_text: str):
+        """
+        Resaltar texto de búsqueda en el widget
+
+        Recorre todos los QLabel hijos y resalta el texto encontrado
+        usando HTML con color de fondo amarillo.
+
+        Args:
+            search_text: Texto a resaltar (case-insensitive)
+        """
+        if not search_text:
+            return
+
+        # Recorrer todos los widgets hijos que sean QLabel
+        for child in self.findChildren(QLabel):
+            self._highlight_label(child, search_text)
+
+    def clear_highlight(self):
+        """
+        Limpiar resaltado de texto en el widget
+
+        Restaura el texto original sin HTML de resaltado.
+        """
+        # Recorrer todos los QLabel hijos y limpiar HTML
+        for child in self.findChildren(QLabel):
+            self._clear_label_highlight(child)
+
+    def _highlight_label(self, label: QLabel, search_text: str):
+        """
+        Resaltar texto en un QLabel específico
+
+        Args:
+            label: QLabel a modificar
+            search_text: Texto a resaltar
+        """
+        original_text = label.text()
+
+        # Si el texto ya tiene HTML (indicado por tags), extraer texto plano
+        if '<' in original_text and '>' in original_text:
+            # Intentar extraer texto sin HTML
+            import html
+            plain_text = re.sub(r'<[^>]+>', '', original_text)
+            plain_text = html.unescape(plain_text)
+        else:
+            plain_text = original_text
+
+        # Guardar texto original en una propiedad dinámica si no existe
+        if not label.property("original_text"):
+            label.setProperty("original_text", plain_text)
+
+        # Crear patrón regex case-insensitive
+        pattern = re.compile(re.escape(search_text), re.IGNORECASE)
+
+        # Función de reemplazo que preserva el caso original
+        def replace_match(match):
+            matched_text = match.group(0)
+            return f'<span style="background-color: #FFD700; color: #000000; font-weight: bold;">{matched_text}</span>'
+
+        # Aplicar resaltado
+        highlighted_text = pattern.sub(replace_match, plain_text)
+
+        # Si hubo cambios, aplicar HTML
+        if highlighted_text != plain_text:
+            # Preservar saltos de línea y espacios en HTML
+            highlighted_text = highlighted_text.replace('\n', '<br>')
+            label.setTextFormat(Qt.TextFormat.RichText)
+            label.setText(highlighted_text)
+
+    def _clear_label_highlight(self, label: QLabel):
+        """
+        Limpiar resaltado en un QLabel específico
+
+        Args:
+            label: QLabel a limpiar
+        """
+        # Restaurar texto original si existe
+        original_text = label.property("original_text")
+        if original_text:
+            label.setTextFormat(Qt.TextFormat.PlainText)
+            label.setText(original_text)
+            label.setProperty("original_text", None)
