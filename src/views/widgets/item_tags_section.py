@@ -2,18 +2,21 @@
 Widget de tags de items para el Creador Masivo
 
 Componentes:
-- Tags seleccionables tipo chips/pills
-- Botón + para crear nuevos tags
-- Siempre visible (a diferencia de ProjectElementTagsSection)
+- Área de chips seleccionados con scroll
+- Campo de búsqueda con autocompletado
+- Lista desplegable de resultados
+- Creación rápida de tags
 """
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QScrollArea, QLineEdit, QCompleter
+    QFrame, QScrollArea, QLineEdit, QListWidget, QListWidgetItem
 )
-from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from PyQt6.QtGui import QFont
-from src.views.widgets.project_element_tags_section import TagChip, FlowLayout
+from src.views.widgets.project_tag_chip import ProjectTagChip
+from src.core.global_tag_manager import GlobalTagManager
+from typing import List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 class ItemTagsSection(QWidget):
     """
-    Sección de tags generales de items
+    Sección de tags generales de items con selector tipo chips
 
-    Permite seleccionar tags existentes y crear nuevos.
-    Siempre visible, a diferencia de ProjectElementTagsSection.
+    Permite seleccionar tags existentes mediante búsqueda en tiempo real,
+    mostrarlos como chips removibles y crear nuevos tags al vuelo.
 
     Señales:
         tags_changed: Emitida cuando cambian los tags seleccionados (list[str])
@@ -32,14 +35,24 @@ class ItemTagsSection(QWidget):
     """
 
     # Señales
-    tags_changed = pyqtSignal(list)  # list[str]
+    tags_changed = pyqtSignal(list)  # list[str] nombres de tags
     create_tag_clicked = pyqtSignal()
 
-    def __init__(self, parent=None):
-        """Inicializa la sección de tags de items"""
+    def __init__(self, tag_manager: GlobalTagManager = None, parent=None):
+        """
+        Inicializa la sección de tags de items
+
+        Args:
+            tag_manager: Manager de tags globales (opcional)
+            parent: Widget padre
+        """
         super().__init__(parent)
-        self.tag_chips: list[TagChip] = []
-        self.all_available_tags: list[str] = []  # Para autocompletado
+        self.tag_manager = tag_manager
+        self.selected_tags: List = []  # Lista de ProjectElementTag
+        self._search_timer = QTimer()
+        self._search_timer.setSingleShot(True)
+        self._search_timer.timeout.connect(self._perform_search)
+
         self._setup_ui()
         self._apply_styles()
         self._connect_signals()
@@ -47,8 +60,8 @@ class ItemTagsSection(QWidget):
     def _setup_ui(self):
         """Configura la interfaz del widget"""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(15, 12, 15, 12)  # Reducido de 15,15,15,15
-        layout.setSpacing(8)  # Reducido de 12
+        layout.setContentsMargins(15, 12, 15, 12)
+        layout.setSpacing(8)
 
         # Título con botón crear
         header_layout = QHBoxLayout()
@@ -78,103 +91,90 @@ class ItemTagsSection(QWidget):
         separator.setStyleSheet("background-color: #444;")
         layout.addWidget(separator)
 
-        # Campo de búsqueda/agregar tag
-        search_layout = QHBoxLayout()
-        search_layout.setSpacing(8)
+        # Área de chips seleccionados
+        self.chips_frame = QFrame()
+        self.chips_frame.setMaximumHeight(100)
+        self.chips_frame.setMinimumHeight(50)
+        self.chips_layout = QHBoxLayout(self.chips_frame)
+        self.chips_layout.setContentsMargins(8, 8, 8, 8)
+        self.chips_layout.setSpacing(6)
+        self.chips_layout.addStretch()
 
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Buscar o agregar tag...")
-        self.search_input.setMinimumHeight(32)  # Reducido de 35
-        search_layout.addWidget(self.search_input)
-
-        self.add_btn = QPushButton("Agregar")
-        self.add_btn.setFixedHeight(32)  # Reducido de 35
-        self.add_btn.setToolTip("Agregar tag desde búsqueda")
-        search_layout.addWidget(self.add_btn)
-
-        layout.addLayout(search_layout)
-
-        # Contenedor scrollable para tags
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setMaximumHeight(200)  # Aumentado para permitir ver más filas de tags
-        scroll_area.setMinimumHeight(50)   # Altura mínima
-        scroll_area.setStyleSheet("""
+        # Scroll para chips
+        chips_scroll = QScrollArea()
+        chips_scroll.setWidget(self.chips_frame)
+        chips_scroll.setWidgetResizable(True)
+        chips_scroll.setMaximumHeight(110)
+        chips_scroll.setMinimumHeight(60)
+        chips_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        chips_scroll.setStyleSheet("""
             QScrollArea {
-                background-color: transparent;
-                border: none;
-            }
-            QScrollBar:vertical {
                 background-color: #2d2d2d;
-                width: 8px;
+                border: 1px solid #444;
+                border-radius: 6px;
+            }
+            QScrollBar:horizontal {
+                background-color: #2d2d2d;
+                height: 8px;
                 border-radius: 4px;
             }
-            QScrollBar::handle:vertical {
+            QScrollBar::handle:horizontal {
                 background-color: #555;
                 border-radius: 4px;
-                min-height: 20px;
+                min-width: 20px;
             }
-            QScrollBar::handle:vertical:hover {
+            QScrollBar::handle:horizontal:hover {
                 background-color: #666;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
             }
         """)
 
-        # Widget contenedor de tags
-        self.tags_container = QWidget()
-        self.tags_layout = FlowLayout()
-        self.tags_container.setLayout(self.tags_layout)
+        layout.addWidget(chips_scroll)
 
-        scroll_area.setWidget(self.tags_container)
-        layout.addWidget(scroll_area)
+        # Campo de búsqueda
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("🔍 Buscar o crear tag...")
+        self.search_input.setMinimumHeight(35)
+        self.search_input.setFont(QFont("Segoe UI", 10))
+        layout.addWidget(self.search_input)
 
-        # Label de ayuda cuando no hay tags
-        self.empty_label = QLabel("No hay tags disponibles. Usa el campo de búsqueda o haz clic en + para crear.")
-        self.empty_label.setStyleSheet("color: #888; font-style: italic;")
+        # Lista de resultados (oculta por defecto)
+        self.results_list = QListWidget()
+        self.results_list.setFont(QFont("Segoe UI", 9))
+        self.results_list.setMaximumHeight(180)
+        self.results_list.hide()
+        layout.addWidget(self.results_list)
+
+        # Label de ayuda cuando no hay tags seleccionados
+        self.empty_label = QLabel("No hay tags seleccionados. Usa el campo de búsqueda para agregar.")
+        self.empty_label.setStyleSheet("color: #888; font-style: italic; padding: 10px;")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_label.setWordWrap(True)
         layout.addWidget(self.empty_label)
-
-        # Autocompletador (se configurará al cargar tags)
-        self.completer = QCompleter()
-        self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self.search_input.setCompleter(self.completer)
 
     def _apply_styles(self):
         """Aplica estilos CSS al widget"""
         self.setStyleSheet("""
-            QPushButton {
+            QPushButton#create_btn {
                 background-color: #2196F3;
                 color: white;
                 border: none;
                 border-radius: 5px;
                 font-weight: bold;
-                font-size: 13px;
-                padding: 8px 16px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:pressed {
-                background-color: #0D47A1;
-            }
-            QPushButton#create_btn {
                 font-size: 16px;
-                padding: 0;
+            }
+            QPushButton#create_btn:hover {
+                background-color: #1976D2;
             }
             QLineEdit {
                 background-color: #2d2d2d;
                 color: #ffffff;
-                border: 1px solid #444;
-                border-radius: 5px;
+                border: 2px solid #3498db;
+                border-radius: 6px;
                 padding: 8px 12px;
-                font-size: 13px;
+                font-size: 10pt;
             }
             QLineEdit:focus {
-                border: 1px solid #2196F3;
+                border: 2px solid #5dade2;
                 background-color: #353535;
             }
             QLineEdit::placeholder {
@@ -185,106 +185,160 @@ class ItemTagsSection(QWidget):
             }
         """)
 
+        self.create_btn.setObjectName("create_btn")
+
+        self.chips_frame.setStyleSheet("""
+            QFrame {
+                background-color: #2d2d2d;
+                border: 1px solid #444;
+                border-radius: 6px;
+            }
+        """)
+
+        self.results_list.setStyleSheet("""
+            QListWidget {
+                background-color: #34495e;
+                color: #ecf0f1;
+                border: 1px solid #3498db;
+                border-radius: 6px;
+                padding: 4px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-radius: 4px;
+            }
+            QListWidget::item:hover {
+                background-color: #3498db;
+            }
+            QListWidget::item:selected {
+                background-color: #2980b9;
+            }
+        """)
+
     def _connect_signals(self):
         """Conecta señales internas"""
         self.create_btn.clicked.connect(self.create_tag_clicked.emit)
-        self.add_btn.clicked.connect(self._on_add_tag_from_search)
-        self.search_input.returnPressed.connect(self._on_add_tag_from_search)
-        self.search_input.textChanged.connect(self._on_search_changed)
+        self.search_input.textChanged.connect(self._on_search_text_changed)
+        self.search_input.returnPressed.connect(self._on_enter_pressed)
+        self.results_list.itemClicked.connect(self._on_tag_selected)
 
-    def _on_search_changed(self, text: str):
-        """Callback cuando cambia el texto de búsqueda"""
-        # Filtrar tags visibles según búsqueda
-        search_text = text.lower().strip()
-
-        if not search_text:
-            # Mostrar todos los tags
-            for chip in self.tag_chips:
-                chip.setVisible(True)
+    def _on_search_text_changed(self, text: str):
+        """Maneja cambio en texto de búsqueda (con debounce)"""
+        self._search_timer.stop()
+        if text.strip():
+            self._search_timer.start(300)  # 300ms debounce
         else:
-            # Filtrar tags que coincidan
-            for chip in self.tag_chips:
-                matches = search_text in chip.get_tag_name().lower()
-                chip.setVisible(matches)
+            self.results_list.hide()
 
-    def _on_add_tag_from_search(self):
-        """Callback para agregar tag desde campo de búsqueda"""
-        tag_name = self.search_input.text().strip()
-
-        if not tag_name:
-            logger.warning("No se puede agregar tag vacío")
+    def _perform_search(self):
+        """Realiza la búsqueda de tags"""
+        if not self.tag_manager:
+            logger.warning("No hay tag_manager configurado para búsqueda")
             return
 
-        # Verificar si ya existe
-        existing_names = [chip.get_tag_name().lower() for chip in self.tag_chips]
-        if tag_name.lower() in existing_names:
-            logger.info(f"Tag '{tag_name}' ya existe, seleccionándolo")
-            # Seleccionar el tag existente
-            for chip in self.tag_chips:
-                if chip.get_tag_name().lower() == tag_name.lower():
-                    chip.set_selected(True)
-                    break
-            self.search_input.clear()
-            self._on_tag_toggled(True)
+        query = self.search_input.text().strip()
+
+        if not query:
+            self.results_list.hide()
             return
 
-        # Agregar nuevo tag
-        self.add_tag(tag_name, select=True)
+        # Buscar tags
+        results = self.tag_manager.search_tags(query)
+
+        # Filtrar tags ya seleccionados
+        selected_ids = [tag.id for tag in self.selected_tags]
+        results = [tag for tag in results if tag.id not in selected_ids]
+
+        # Mostrar resultados
+        self.results_list.clear()
+
+        if results:
+            for tag in results[:10]:  # Máximo 10 resultados
+                item = QListWidgetItem(f"{tag.name}")
+                item.setData(Qt.ItemDataRole.UserRole, tag)
+                self.results_list.addItem(item)
+            self.results_list.show()
+        else:
+            # Opción para crear nuevo tag
+            item = QListWidgetItem(f"✨ Crear tag: '{query}'")
+            item.setData(Qt.ItemDataRole.UserRole, None)
+            self.results_list.addItem(item)
+            self.results_list.show()
+
+    def _on_tag_selected(self, item: QListWidgetItem):
+        """Maneja selección de tag de la lista"""
+        tag = item.data(Qt.ItemDataRole.UserRole)
+
+        if tag is None:
+            # Crear nuevo tag
+            if not self.tag_manager:
+                logger.error("No hay tag_manager para crear tags")
+                return
+
+            query = self.search_input.text().strip()
+            tag = self.tag_manager.create_tag(name=query, color="#3498db")
+
+            if not tag:
+                logger.error(f"No se pudo crear tag: {query}")
+                return
+
+        # Agregar tag a seleccionados
+        if tag.id not in [t.id for t in self.selected_tags]:
+            self.selected_tags.append(tag)
+            self._add_chip(tag)
+            self._update_empty_label()
+            self._emit_tags_changed()
+
+        # Limpiar búsqueda
         self.search_input.clear()
+        self.results_list.hide()
 
-        logger.info(f"Tag '{tag_name}' agregado desde búsqueda")
+    def _on_enter_pressed(self):
+        """Maneja presión de Enter en búsqueda"""
+        if self.results_list.count() > 0:
+            # Seleccionar primer resultado
+            first_item = self.results_list.item(0)
+            self._on_tag_selected(first_item)
 
-    def load_tags(self, tags: list[str]):
-        """
-        Carga los tags disponibles
+    def _add_chip(self, tag):
+        """Agrega un chip de tag a la vista"""
+        chip = ProjectTagChip(tag, removable=True)
+        chip.tag_removed.connect(self._on_chip_removed)
 
-        Args:
-            tags: Lista de nombres de tags
-        """
-        # Limpiar chips existentes
-        self._clear_chips()
+        # Insertar antes del stretch
+        self.chips_layout.insertWidget(self.chips_layout.count() - 1, chip)
 
-        # Guardar para autocompletado
-        self.all_available_tags = tags.copy()
-        self.completer.setModel(None)  # Resetear modelo
-        from PyQt6.QtCore import QStringListModel
-        self.completer.setModel(QStringListModel(tags))
+        logger.debug(f"Chip agregado: {tag.name}")
 
-        if not tags:
-            self.empty_label.setVisible(True)
-            self.tags_container.setVisible(False)
-            return
+    def _on_chip_removed(self, tag_id: int):
+        """Maneja remoción de chip"""
+        # Remover tag de seleccionados
+        self.selected_tags = [t for t in self.selected_tags if t.id != tag_id]
 
-        self.empty_label.setVisible(False)
-        self.tags_container.setVisible(True)
+        # Remover chip visual
+        for i in range(self.chips_layout.count()):
+            widget = self.chips_layout.itemAt(i).widget()
+            if isinstance(widget, ProjectTagChip) and widget.tag.id == tag_id:
+                widget.deleteLater()
+                break
 
-        # Crear chips
-        for tag_name in tags:
-            chip = TagChip(tag_name)
-            chip.toggled.connect(self._on_tag_toggled)
-            self.tag_chips.append(chip)
-            self.tags_layout.addWidget(chip)
+        self._update_empty_label()
+        self._emit_tags_changed()
 
-        logger.info(f"Cargados {len(tags)} tags de items")
+        logger.debug(f"Chip removido: tag_id={tag_id}")
 
-    def _clear_chips(self):
-        """Limpia todos los chips de tags"""
-        for chip in self.tag_chips:
-            chip.deleteLater()
+    def _emit_tags_changed(self):
+        """Emite señal de cambio de tags"""
+        tag_names = [tag.name for tag in self.selected_tags]
+        self.tags_changed.emit(tag_names)
+        logger.debug(f"Tags seleccionados: {tag_names}")
 
-        # Limpiar el layout
-        while self.tags_layout.count():
-            item = self.tags_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+    def _update_empty_label(self):
+        """Actualiza visibilidad del label de ayuda"""
+        has_tags = len(self.selected_tags) > 0
+        self.empty_label.setVisible(not has_tags)
 
-        self.tag_chips.clear()
-
-    def _on_tag_toggled(self, is_selected: bool):
-        """Callback cuando se selecciona/deselecciona un tag"""
-        selected_tags = self.get_selected_tags()
-        self.tags_changed.emit(selected_tags)
-        logger.debug(f"Tags de items seleccionados: {selected_tags}")
+    # === API PÚBLICA ===
 
     def get_selected_tags(self) -> list[str]:
         """
@@ -293,7 +347,7 @@ class ItemTagsSection(QWidget):
         Returns:
             Lista de nombres de tags seleccionados
         """
-        return [chip.get_tag_name() for chip in self.tag_chips if chip.is_selected]
+        return [tag.name for tag in self.selected_tags]
 
     def set_selected_tags(self, tag_names: list[str]):
         """
@@ -302,14 +356,45 @@ class ItemTagsSection(QWidget):
         Args:
             tag_names: Lista de nombres de tags a seleccionar
         """
-        for chip in self.tag_chips:
-            should_select = chip.get_tag_name() in tag_names
-            chip.set_selected(should_select)
+        if not self.tag_manager:
+            logger.warning("No hay tag_manager configurado")
+            return
+
+        # Limpiar selección actual
+        self.clear_selection()
+
+        # Cargar tags
+        for tag_name in tag_names:
+            tag = self.tag_manager.get_tag_by_name(tag_name)
+            if tag:
+                self.selected_tags.append(tag)
+                self._add_chip(tag)
+            else:
+                # Si el tag no existe, crearlo
+                logger.info(f"Tag '{tag_name}' no existe, creándolo...")
+                tag = self.tag_manager.create_tag(name=tag_name, color="#3498db")
+                if tag:
+                    self.selected_tags.append(tag)
+                    self._add_chip(tag)
+
+        self._update_empty_label()
+        logger.info(f"Tags establecidos: {tag_names}")
 
     def clear_selection(self):
         """Limpia la selección de todos los tags"""
-        for chip in self.tag_chips:
-            chip.set_selected(False)
+        self.selected_tags.clear()
+
+        # Remover todos los chips
+        while self.chips_layout.count() > 1:  # Dejar el stretch
+            item = self.chips_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        self.search_input.clear()
+        self.results_list.hide()
+        self._update_empty_label()
+
+        logger.debug("Selección limpiada")
 
     def add_tag(self, tag_name: str, select: bool = True):
         """
@@ -317,68 +402,42 @@ class ItemTagsSection(QWidget):
 
         Args:
             tag_name: Nombre del tag
-            select: Si seleccionarlo automáticamente
+            select: Si seleccionarlo automáticamente (siempre True para este selector)
         """
-        # Verificar que no exista ya
-        existing_names = [chip.get_tag_name() for chip in self.tag_chips]
-        if tag_name in existing_names:
-            logger.warning(f"Tag '{tag_name}' ya existe")
+        if not self.tag_manager:
+            logger.warning("No hay tag_manager configurado")
             return
 
-        # Mostrar contenedor si estaba vacío
-        if not self.tag_chips:
-            self.empty_label.setVisible(False)
-            self.tags_container.setVisible(True)
+        # Verificar que no exista ya
+        existing_names = [tag.name for tag in self.selected_tags]
+        if tag_name in existing_names:
+            logger.info(f"Tag '{tag_name}' ya está seleccionado")
+            return
 
-        # Crear chip
-        chip = TagChip(tag_name, is_selected=select)
-        chip.toggled.connect(self._on_tag_toggled)
-        self.tag_chips.append(chip)
-        self.tags_layout.addWidget(chip)
+        # Buscar o crear el tag
+        tag = self.tag_manager.get_tag_by_name(tag_name)
+        if not tag:
+            tag = self.tag_manager.create_tag(name=tag_name, color="#3498db")
 
-        # Agregar a lista de autocompletado
-        if tag_name not in self.all_available_tags:
-            self.all_available_tags.append(tag_name)
-            from PyQt6.QtCore import QStringListModel
-            self.completer.setModel(QStringListModel(self.all_available_tags))
+        if tag:
+            self.selected_tags.append(tag)
+            self._add_chip(tag)
+            self._update_empty_label()
+            self._emit_tags_changed()
+            logger.info(f"Tag '{tag_name}' agregado")
 
-        logger.info(f"Tag '{tag_name}' agregado")
-
-        # Emitir cambio si está seleccionado
-        if select:
-            self._on_tag_toggled(True)
-
-    def remove_tag(self, tag_name: str):
+    def load_tags(self, tags: list[str]):
         """
-        Elimina un tag de la lista
+        Método de compatibilidad con la versión anterior
+        Carga tags disponibles (no hace nada en el nuevo selector)
 
         Args:
-            tag_name: Nombre del tag a eliminar
+            tags: Lista de nombres de tags (ignorado)
         """
-        for i, chip in enumerate(self.tag_chips[:]):
-            if chip.get_tag_name() == tag_name:
-                self.tag_chips.remove(chip)
-
-                # Remover del layout usando takeAt
-                item = self.tags_layout.takeAt(i)
-                if item and item.widget():
-                    item.widget().deleteLater()
-
-                chip.deleteLater()
-                logger.info(f"Tag '{tag_name}' eliminado")
-
-                # Verificar si quedó vacío
-                if not self.tag_chips:
-                    self.empty_label.setVisible(True)
-                    self.tags_container.setVisible(False)
-
-                # Emitir cambio
-                self._on_tag_toggled(False)
-                break
-
-    def clear_search(self):
-        """Limpia el campo de búsqueda"""
-        self.search_input.clear()
+        # En el nuevo selector, los tags se cargan dinámicamente desde la BD
+        # Este método existe solo para compatibilidad
+        logger.debug("load_tags() llamado - ignorado en nuevo selector")
+        pass
 
     def to_list(self) -> list[str]:
         """
@@ -398,8 +457,17 @@ class ItemTagsSection(QWidget):
         """
         self.set_selected_tags(tag_names)
 
+    def set_tag_manager(self, tag_manager: GlobalTagManager):
+        """
+        Establece el tag manager
+
+        Args:
+            tag_manager: Manager de tags globales
+        """
+        self.tag_manager = tag_manager
+        logger.info("Tag manager establecido")
+
     def __repr__(self) -> str:
         """Representación del widget"""
-        selected = self.get_selected_tags()
-        total = len(self.tag_chips)
-        return f"ItemTagsSection(selected={len(selected)}/{total})"
+        selected = len(self.selected_tags)
+        return f"ItemTagsSection(selected={selected})"

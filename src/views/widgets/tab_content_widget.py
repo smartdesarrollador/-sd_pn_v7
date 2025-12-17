@@ -18,6 +18,7 @@ from src.views.widgets.item_fields_section import ItemFieldsSection
 from src.views.widgets.category_selector_section import CategorySelectorSection
 from src.views.widgets.special_tag_section import SpecialTagSection
 from src.views.widgets.item_tags_section import ItemTagsSection
+from src.core.global_tag_manager import GlobalTagManager
 from src.models.item_draft import ItemDraft
 import logging
 
@@ -138,7 +139,12 @@ class TabContentWidget(QWidget):
         self._add_separator(content_layout)
 
         # 6. Tags de Items (opcionales)
-        self.item_tags_section = ItemTagsSection()
+        # Crear GlobalTagManager para tags de items
+        global_tag_manager = None
+        if self.db_manager:
+            global_tag_manager = GlobalTagManager(self.db_manager)
+
+        self.item_tags_section = ItemTagsSection(tag_manager=global_tag_manager)
         content_layout.addWidget(self.item_tags_section)
 
         # Stretch al final
