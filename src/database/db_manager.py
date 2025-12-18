@@ -101,8 +101,10 @@ class DBManager:
                 schema_sql = f.read()
             cursor.executescript(schema_sql)
         else:
-            # Embedded complete schema
+            # Embedded complete schema - ACTUALIZADO con TODAS las migraciones
             cursor.executescript("""
+                -- ========== CONFIGURACIÓN Y SISTEMA ==========
+
                 -- Tabla de configuración general
                 CREATE TABLE IF NOT EXISTS settings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,6 +113,19 @@ class DBManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+
+                -- Tabla de sesiones de usuario
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT UNIQUE NOT NULL,
+                    user_id TEXT DEFAULT 'default_user',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP NOT NULL,
+                    is_valid BOOLEAN DEFAULT 1
+                );
+
+                -- ========== CATEGORÍAS E ITEMS ==========
 
                 -- Tabla de categorías
                 CREATE TABLE IF NOT EXISTS categories (
@@ -132,7 +147,7 @@ class DBManager:
                     pinned_order INTEGER DEFAULT 0
                 );
 
-                -- Tabla de listas (NUEVA - Refactorización v3.1.0)
+                -- Tabla de listas
                 CREATE TABLE IF NOT EXISTS listas (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     category_id INTEGER NOT NULL,
@@ -146,7 +161,7 @@ class DBManager:
                     UNIQUE(category_id, name)
                 );
 
-                -- Tabla de items (COMPLETA con TODOS los campos)
+                -- Tabla de items
                 CREATE TABLE IF NOT EXISTS items (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     category_id INTEGER NOT NULL,
@@ -208,29 +223,261 @@ class DBManager:
                     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
                 );
 
-                -- Tabla de paneles anclados (COMPLETA con campos de global search)
-                CREATE TABLE IF NOT EXISTS pinned_panels (
+                -- Tabla de borradores de items
+                CREATE TABLE IF NOT EXISTS item_drafts (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    category_id INTEGER,
-                    custom_name TEXT,
-                    custom_color TEXT,
-                    x_position INTEGER NOT NULL,
-                    y_position INTEGER NOT NULL,
-                    width INTEGER NOT NULL DEFAULT 350,
-                    height INTEGER NOT NULL DEFAULT 500,
-                    is_minimized BOOLEAN DEFAULT 0,
+                    tab_id TEXT NOT NULL UNIQUE,
+                    tab_name TEXT DEFAULT 'Sin título',
+                    project_id INTEGER DEFAULT NULL,
+                    area_id INTEGER DEFAULT NULL,
+                    category_id INTEGER DEFAULT NULL,
+                    create_as_list BOOLEAN DEFAULT 0,
+                    list_name TEXT DEFAULT NULL,
+                    item_tags_json TEXT DEFAULT NULL,
+                    project_element_tags_json TEXT DEFAULT NULL,
+                    items_json TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_opened TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    open_count INTEGER DEFAULT 0,
-                    is_active BOOLEAN DEFAULT 1,
-                    panel_type TEXT DEFAULT 'category',
-                    search_query TEXT DEFAULT NULL,
-                    advanced_filters TEXT DEFAULT NULL,
-                    state_filter TEXT DEFAULT 'normal',
-                    filter_config TEXT DEFAULT NULL,
-                    keyboard_shortcut TEXT DEFAULT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+                );
+
+                -- ========== SISTEMA DE TAGS ==========
+
+                -- Tabla de tags globales
+                CREATE TABLE IF NOT EXISTS tags (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    usage_count INTEGER DEFAULT 0,
+                    last_used TIMESTAMP,
+                    color TEXT,
+                    description TEXT
+                );
+
+                -- Tabla pivot para tags de items
+                CREATE TABLE IF NOT EXISTS item_tags (
+                    item_id INTEGER NOT NULL,
+                    tag_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (item_id, tag_id),
+                    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+                    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+                );
+
+                -- Tabla de tags de categorías
+                CREATE TABLE IF NOT EXISTS category_tags (
+                    category_id INTEGER NOT NULL,
+                    tag_name TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (category_id, tag_name),
                     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
                 );
+
+                -- Tabla de grupos de tags
+                CREATE TABLE IF NOT EXISTS tag_groups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    description TEXT,
+                    tags TEXT,
+                    color TEXT,
+                    icon TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_active BOOLEAN DEFAULT 1
+                );
+
+                -- ========== PROYECTOS ==========
+
+                -- Tabla de proyectos
+                CREATE TABLE IF NOT EXISTS proyectos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    description TEXT,
+                    color TEXT DEFAULT '#3498db',
+                    icon TEXT DEFAULT '📁',
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                -- Tabla de relaciones proyecto-entidad
+                CREATE TABLE IF NOT EXISTS project_relations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL,
+                    entity_type TEXT NOT NULL CHECK(entity_type IN ('tag', 'process', 'list', 'table', 'category', 'item')),
+                    entity_id INTEGER NOT NULL,
+                    description TEXT,
+                    order_index INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (project_id) REFERENCES proyectos(id) ON DELETE CASCADE,
+                    UNIQUE(project_id, entity_type, entity_id)
+                );
+
+                -- Tabla de componentes de proyecto
+                CREATE TABLE IF NOT EXISTS project_components (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL,
+                    component_type TEXT NOT NULL CHECK(component_type IN ('divider', 'comment', 'alert', 'note')),
+                    content TEXT,
+                    order_index INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (project_id) REFERENCES proyectos(id) ON DELETE CASCADE
+                );
+
+                -- Tabla de tags de elementos de proyecto
+                CREATE TABLE IF NOT EXISTS project_element_tags (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    color TEXT DEFAULT '#3498db',
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                -- Tabla de asociaciones de tags de proyecto
+                CREATE TABLE IF NOT EXISTS project_element_tag_associations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_relation_id INTEGER,
+                    project_component_id INTEGER,
+                    tag_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (project_relation_id) REFERENCES project_relations(id) ON DELETE CASCADE,
+                    FOREIGN KEY (project_component_id) REFERENCES project_components(id) ON DELETE CASCADE,
+                    FOREIGN KEY (tag_id) REFERENCES project_element_tags(id) ON DELETE CASCADE,
+                    CHECK((project_relation_id IS NOT NULL AND project_component_id IS NULL) OR
+                          (project_relation_id IS NULL AND project_component_id IS NOT NULL)),
+                    UNIQUE(project_relation_id, tag_id),
+                    UNIQUE(project_component_id, tag_id)
+                );
+
+                -- Tabla de orden de tags de proyecto
+                CREATE TABLE IF NOT EXISTS project_tag_orders (
+                    project_id INTEGER NOT NULL,
+                    tag_id INTEGER NOT NULL,
+                    order_index INTEGER NOT NULL,
+                    PRIMARY KEY (project_id, tag_id),
+                    FOREIGN KEY (project_id) REFERENCES proyectos(id) ON DELETE CASCADE,
+                    FOREIGN KEY (tag_id) REFERENCES project_element_tags(id) ON DELETE CASCADE
+                );
+
+                -- Tabla de orden filtrado de proyecto
+                CREATE TABLE IF NOT EXISTS project_filtered_order (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL,
+                    filter_tag_id INTEGER NOT NULL,
+                    element_type TEXT NOT NULL CHECK(element_type IN ('relation', 'component')),
+                    element_id INTEGER NOT NULL,
+                    order_index INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (project_id) REFERENCES proyectos(id) ON DELETE CASCADE,
+                    FOREIGN KEY (filter_tag_id) REFERENCES project_element_tags(id) ON DELETE CASCADE,
+                    UNIQUE(project_id, filter_tag_id, element_type, element_id)
+                );
+
+                -- Tabla de borradores de proyecto
+                CREATE TABLE IF NOT EXISTS project_drafts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id INTEGER NOT NULL,
+                    tab_name TEXT NOT NULL DEFAULT 'Sin titulo',
+                    draft_data TEXT NOT NULL,
+                    position INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (project_id) REFERENCES proyectos(id) ON DELETE CASCADE
+                );
+
+                -- ========== ÁREAS ==========
+
+                -- Tabla de áreas
+                CREATE TABLE IF NOT EXISTS areas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    description TEXT,
+                    color TEXT DEFAULT '#9b59b6',
+                    icon TEXT DEFAULT '🏢',
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                -- Tabla de relaciones área-entidad
+                CREATE TABLE IF NOT EXISTS area_relations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    area_id INTEGER NOT NULL,
+                    entity_type TEXT NOT NULL CHECK(entity_type IN ('tag', 'process', 'list', 'table', 'category', 'item')),
+                    entity_id INTEGER NOT NULL,
+                    description TEXT,
+                    order_index INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (area_id) REFERENCES areas(id) ON DELETE CASCADE,
+                    UNIQUE(area_id, entity_type, entity_id)
+                );
+
+                -- Tabla de componentes de área
+                CREATE TABLE IF NOT EXISTS area_components (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    area_id INTEGER NOT NULL,
+                    component_type TEXT NOT NULL CHECK(component_type IN ('divider', 'comment', 'alert', 'note')),
+                    content TEXT,
+                    order_index INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (area_id) REFERENCES areas(id) ON DELETE CASCADE
+                );
+
+                -- Tabla de tags de elementos de área
+                CREATE TABLE IF NOT EXISTS area_element_tags (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    color TEXT DEFAULT '#9b59b6',
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                -- Tabla de asociaciones de tags de área
+                CREATE TABLE IF NOT EXISTS area_element_tag_associations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    area_relation_id INTEGER,
+                    area_component_id INTEGER,
+                    tag_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (area_relation_id) REFERENCES area_relations(id) ON DELETE CASCADE,
+                    FOREIGN KEY (area_component_id) REFERENCES area_components(id) ON DELETE CASCADE,
+                    FOREIGN KEY (tag_id) REFERENCES area_element_tags(id) ON DELETE CASCADE,
+                    CHECK((area_relation_id IS NOT NULL AND area_component_id IS NULL) OR
+                          (area_relation_id IS NULL AND area_component_id IS NOT NULL)),
+                    UNIQUE(area_relation_id, tag_id),
+                    UNIQUE(area_component_id, tag_id)
+                );
+
+                -- Tabla de orden de tags de área
+                CREATE TABLE IF NOT EXISTS area_tag_orders (
+                    area_id INTEGER NOT NULL,
+                    tag_id INTEGER NOT NULL,
+                    order_index INTEGER NOT NULL,
+                    PRIMARY KEY (area_id, tag_id),
+                    FOREIGN KEY (area_id) REFERENCES areas(id) ON DELETE CASCADE,
+                    FOREIGN KEY (tag_id) REFERENCES area_element_tags(id) ON DELETE CASCADE
+                );
+
+                -- Tabla de orden filtrado de área
+                CREATE TABLE IF NOT EXISTS area_filtered_order (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    area_id INTEGER NOT NULL,
+                    filter_tag_id INTEGER NOT NULL,
+                    element_type TEXT NOT NULL CHECK(element_type IN ('relation', 'component')),
+                    element_id INTEGER NOT NULL,
+                    order_index INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (area_id) REFERENCES areas(id) ON DELETE CASCADE,
+                    FOREIGN KEY (filter_tag_id) REFERENCES area_element_tags(id) ON DELETE CASCADE,
+                    UNIQUE(area_id, filter_tag_id, element_type, element_id)
+                );
+
+                -- ========== PROCESOS ==========
 
                 -- Tabla de procesos
                 CREATE TABLE IF NOT EXISTS processes (
@@ -276,22 +523,6 @@ class DBManager:
                     UNIQUE(process_id, item_id, step_order)
                 );
 
-                -- Tabla de paneles anclados de procesos
-                CREATE TABLE IF NOT EXISTS pinned_process_panels (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    process_id INTEGER NOT NULL,
-                    x_position INTEGER NOT NULL,
-                    y_position INTEGER NOT NULL,
-                    width INTEGER NOT NULL DEFAULT 500,
-                    height INTEGER NOT NULL DEFAULT 600,
-                    is_minimized BOOLEAN DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_opened TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    open_count INTEGER DEFAULT 0,
-                    is_active BOOLEAN DEFAULT 1,
-                    FOREIGN KEY (process_id) REFERENCES processes(id) ON DELETE CASCADE
-                );
-
                 -- Tabla de historial de ejecución de procesos
                 CREATE TABLE IF NOT EXISTS process_execution_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -308,7 +539,75 @@ class DBManager:
                     FOREIGN KEY (process_id) REFERENCES processes(id) ON DELETE CASCADE
                 );
 
-                -- Tabla de configuración del navegador embebido
+                -- ========== PANELES ==========
+
+                -- Tabla de paneles anclados
+                CREATE TABLE IF NOT EXISTS pinned_panels (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category_id INTEGER,
+                    custom_name TEXT,
+                    custom_color TEXT,
+                    x_position INTEGER NOT NULL,
+                    y_position INTEGER NOT NULL,
+                    width INTEGER NOT NULL DEFAULT 350,
+                    height INTEGER NOT NULL DEFAULT 500,
+                    is_minimized BOOLEAN DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_opened TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    open_count INTEGER DEFAULT 0,
+                    is_active BOOLEAN DEFAULT 1,
+                    panel_type TEXT DEFAULT 'category',
+                    search_query TEXT DEFAULT NULL,
+                    advanced_filters TEXT DEFAULT NULL,
+                    state_filter TEXT DEFAULT 'normal',
+                    filter_config TEXT DEFAULT NULL,
+                    keyboard_shortcut TEXT DEFAULT NULL,
+                    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+                );
+
+                -- Tabla de paneles anclados de procesos
+                CREATE TABLE IF NOT EXISTS pinned_process_panels (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    process_id INTEGER NOT NULL,
+                    x_position INTEGER NOT NULL,
+                    y_position INTEGER NOT NULL,
+                    width INTEGER NOT NULL DEFAULT 500,
+                    height INTEGER NOT NULL DEFAULT 600,
+                    is_minimized BOOLEAN DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_opened TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    open_count INTEGER DEFAULT 0,
+                    is_active BOOLEAN DEFAULT 1,
+                    FOREIGN KEY (process_id) REFERENCES processes(id) ON DELETE CASCADE
+                );
+
+                -- Tabla de configuración de paneles
+                CREATE TABLE IF NOT EXISTS panel_settings (
+                    panel_name TEXT PRIMARY KEY,
+                    width INTEGER NOT NULL DEFAULT 380,
+                    height INTEGER NOT NULL DEFAULT 500,
+                    pos_x INTEGER,
+                    pos_y INTEGER,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                -- Tabla de estado de paneles flotantes
+                CREATE TABLE IF NOT EXISTS floating_panels_state (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    panel_type TEXT NOT NULL,
+                    entity_id INTEGER NOT NULL,
+                    position_x INTEGER,
+                    position_y INTEGER,
+                    width INTEGER,
+                    height INTEGER,
+                    is_maximized BOOLEAN DEFAULT 0,
+                    last_opened TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(panel_type, entity_id)
+                );
+
+                -- ========== NAVEGADOR ==========
+
+                -- Tabla de configuración del navegador
                 CREATE TABLE IF NOT EXISTS browser_config (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     home_url TEXT DEFAULT 'https://www.google.com',
@@ -316,16 +615,6 @@ class DBManager:
                     width INTEGER DEFAULT 500,
                     height INTEGER DEFAULT 700,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-
-                -- Tabla de configuración de paneles (dimensiones y posición)
-                CREATE TABLE IF NOT EXISTS panel_settings (
-                    panel_name TEXT PRIMARY KEY,
-                    width INTEGER NOT NULL DEFAULT 380,
-                    height INTEGER NOT NULL DEFAULT 500,
-                    pos_x INTEGER,
-                    pos_y INTEGER,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
@@ -384,15 +673,7 @@ class DBManager:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
-                -- Tabla de tipos de componentes
-                CREATE TABLE IF NOT EXISTS component_types (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name VARCHAR(50) UNIQUE NOT NULL,
-                    description TEXT,
-                    default_config TEXT,
-                    is_active BOOLEAN DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
+                -- ========== BÚSQUEDA ==========
 
                 -- Tabla de historial de búsqueda
                 CREATE TABLE IF NOT EXISTS search_history (
@@ -414,6 +695,8 @@ class DBManager:
                     avg_result_count REAL DEFAULT 0.0,
                     avg_execution_time_ms REAL DEFAULT 0.0
                 );
+
+                -- ========== COLECCIONES Y COMPONENTES ==========
 
                 -- Tabla de colecciones inteligentes
                 CREATE TABLE IF NOT EXISTS smart_collections (
@@ -441,30 +724,17 @@ class DBManager:
                     UNIQUE(collection_id, item_id)
                 );
 
-                -- Tabla de sesiones de usuario
-                CREATE TABLE IF NOT EXISTS sessions (
+                -- Tabla de tipos de componentes
+                CREATE TABLE IF NOT EXISTS component_types (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT UNIQUE NOT NULL,
-                    user_id TEXT DEFAULT 'default_user',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    expires_at TIMESTAMP NOT NULL,
-                    is_valid BOOLEAN DEFAULT 1
+                    name VARCHAR(50) UNIQUE NOT NULL,
+                    description TEXT,
+                    default_config TEXT,
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
 
-                -- Tabla de estado de paneles flotantes relacionados
-                CREATE TABLE IF NOT EXISTS floating_panels_state (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    panel_type TEXT NOT NULL,
-                    entity_id INTEGER NOT NULL,
-                    position_x INTEGER,
-                    position_y INTEGER,
-                    width INTEGER,
-                    height INTEGER,
-                    is_maximized BOOLEAN DEFAULT 0,
-                    last_opened TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(panel_type, entity_id)
-                );
+                -- ========== NOTEBOOK ==========
 
                 -- Tabla de pestañas del notebook
                 CREATE TABLE IF NOT EXISTS notebook_tabs (
@@ -484,57 +754,122 @@ class DBManager:
                     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
                 );
 
-                -- Tabla de grupos de tags
-                CREATE TABLE IF NOT EXISTS tag_groups (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    description TEXT,
-                    tags TEXT,
-                    color TEXT,
-                    icon TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    is_active BOOLEAN DEFAULT 1
-                );
+                -- ========== ÍNDICES PARA OPTIMIZACIÓN ==========
 
-                -- ÍNDICES para optimización
+                -- Índices para categorías
                 CREATE INDEX IF NOT EXISTS idx_categories_order ON categories(order_index);
+                CREATE INDEX IF NOT EXISTS idx_categories_pinned ON categories(is_pinned, pinned_order);
+                CREATE INDEX IF NOT EXISTS idx_categories_active ON categories(is_active) WHERE is_active = 1;
 
-                -- Índices para tabla listas
+                -- Índices para listas
                 CREATE INDEX IF NOT EXISTS idx_listas_category ON listas(category_id);
                 CREATE INDEX IF NOT EXISTS idx_listas_name ON listas(category_id, name);
 
+                -- Índices para items
                 CREATE INDEX IF NOT EXISTS idx_items_category ON items(category_id);
                 CREATE INDEX IF NOT EXISTS idx_items_last_used ON items(last_used DESC);
                 CREATE INDEX IF NOT EXISTS idx_items_favorite ON items(is_favorite) WHERE is_favorite = 1;
-                CREATE INDEX IF NOT EXISTS idx_clipboard_history_date ON clipboard_history(copied_at DESC);
-                CREATE INDEX IF NOT EXISTS idx_pinned_category ON pinned_panels(category_id);
-                CREATE INDEX IF NOT EXISTS idx_pinned_last_opened ON pinned_panels(last_opened DESC);
-                CREATE INDEX IF NOT EXISTS idx_pinned_active ON pinned_panels(is_active);
-                CREATE INDEX IF NOT EXISTS idx_bookmarks_order ON bookmarks(order_index);
-                CREATE INDEX IF NOT EXISTS idx_bookmarks_url ON bookmarks(url);
-                CREATE INDEX IF NOT EXISTS idx_speed_dials_position ON speed_dials(position);
-
-                -- Índices para items de listas (NUEVO - usando list_id)
                 CREATE INDEX IF NOT EXISTS idx_items_list_id ON items(list_id) WHERE list_id IS NOT NULL;
                 CREATE INDEX IF NOT EXISTS idx_items_list_orden ON items(list_id, orden_lista) WHERE list_id IS NOT NULL;
-
-                -- Índices obsoletos (mantener por compatibilidad durante migración)
                 CREATE INDEX IF NOT EXISTS idx_items_is_list ON items(is_list) WHERE is_list = 1;
                 CREATE INDEX IF NOT EXISTS idx_items_list_group ON items(list_group) WHERE list_group IS NOT NULL;
                 CREATE INDEX IF NOT EXISTS idx_items_orden_lista ON items(category_id, list_group, orden_lista) WHERE is_list = 1;
-                CREATE INDEX IF NOT EXISTS idx_processes_active ON processes(is_active) WHERE is_active = 1;
-                CREATE INDEX IF NOT EXISTS idx_processes_pinned ON processes(is_pinned, pinned_order);
-                CREATE INDEX IF NOT EXISTS idx_process_items_order ON process_items(process_id, step_order);
+                CREATE INDEX IF NOT EXISTS idx_items_is_table ON items(is_table) WHERE is_table = 1;
+                CREATE INDEX IF NOT EXISTS idx_items_name_table ON items(name_table) WHERE name_table IS NOT NULL;
+                CREATE INDEX IF NOT EXISTS idx_items_table_orden ON items(name_table, orden_table) WHERE is_table = 1;
+                CREATE INDEX IF NOT EXISTS idx_items_active ON items(is_active, is_archived);
+
+                -- Índices para historial
+                CREATE INDEX IF NOT EXISTS idx_clipboard_history_date ON clipboard_history(copied_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_item_usage_history ON item_usage_history(item_id, used_at DESC);
-                CREATE INDEX IF NOT EXISTS idx_sessions_valid ON sessions(is_valid, expires_at);
-                CREATE INDEX IF NOT EXISTS idx_notebook_tabs_category ON notebook_tabs(category_id);
-                CREATE INDEX IF NOT EXISTS idx_notebook_tabs_position ON notebook_tabs(position);
-                CREATE INDEX IF NOT EXISTS idx_notebook_tabs_updated ON notebook_tabs(updated_at DESC);
+
+                -- Índices para borradores
+                CREATE INDEX IF NOT EXISTS idx_drafts_tab_id ON item_drafts(tab_id);
+                CREATE INDEX IF NOT EXISTS idx_drafts_updated ON item_drafts(updated_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_drafts_category ON item_drafts(category_id);
+
+                -- Índices para tags
+                CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
+                CREATE INDEX IF NOT EXISTS idx_tags_usage_count ON tags(usage_count DESC);
+                CREATE INDEX IF NOT EXISTS idx_item_tags_item_id ON item_tags(item_id);
+                CREATE INDEX IF NOT EXISTS idx_item_tags_tag_id ON item_tags(tag_id);
+                CREATE INDEX IF NOT EXISTS idx_item_tags_composite ON item_tags(tag_id, item_id);
+                CREATE INDEX IF NOT EXISTS idx_category_tags_category ON category_tags(category_id);
                 CREATE INDEX IF NOT EXISTS idx_tag_groups_active ON tag_groups(is_active) WHERE is_active = 1;
                 CREATE INDEX IF NOT EXISTS idx_tag_groups_name ON tag_groups(name);
 
-                -- Configuración inicial por defecto
+                -- Índices para proyectos
+                CREATE INDEX IF NOT EXISTS idx_proyectos_active ON proyectos(is_active) WHERE is_active = 1;
+                CREATE INDEX IF NOT EXISTS idx_project_relations_project ON project_relations(project_id);
+                CREATE INDEX IF NOT EXISTS idx_project_relations_entity ON project_relations(entity_type, entity_id);
+                CREATE INDEX IF NOT EXISTS idx_project_relations_order ON project_relations(project_id, order_index);
+                CREATE INDEX IF NOT EXISTS idx_project_components_project ON project_components(project_id);
+                CREATE INDEX IF NOT EXISTS idx_project_components_order ON project_components(project_id, order_index);
+                CREATE INDEX IF NOT EXISTS idx_project_element_tags_name ON project_element_tags(name);
+                CREATE INDEX IF NOT EXISTS idx_project_element_tag_assoc_relation ON project_element_tag_associations(project_relation_id);
+                CREATE INDEX IF NOT EXISTS idx_project_element_tag_assoc_component ON project_element_tag_associations(project_component_id);
+                CREATE INDEX IF NOT EXISTS idx_project_element_tag_assoc_tag ON project_element_tag_associations(tag_id);
+                CREATE INDEX IF NOT EXISTS idx_project_filtered_order_project_tag ON project_filtered_order(project_id, filter_tag_id);
+                CREATE INDEX IF NOT EXISTS idx_project_filtered_order_element ON project_filtered_order(element_type, element_id);
+                CREATE INDEX IF NOT EXISTS idx_project_filtered_order_order ON project_filtered_order(project_id, filter_tag_id, order_index);
+                CREATE INDEX IF NOT EXISTS idx_project_drafts_project ON project_drafts(project_id);
+                CREATE INDEX IF NOT EXISTS idx_project_drafts_position ON project_drafts(project_id, position);
+                CREATE INDEX IF NOT EXISTS idx_project_drafts_updated ON project_drafts(updated_at);
+
+                -- Índices para áreas
+                CREATE INDEX IF NOT EXISTS idx_areas_active ON areas(is_active) WHERE is_active = 1;
+                CREATE INDEX IF NOT EXISTS idx_area_relations_area ON area_relations(area_id);
+                CREATE INDEX IF NOT EXISTS idx_area_relations_entity ON area_relations(entity_type, entity_id);
+                CREATE INDEX IF NOT EXISTS idx_area_relations_order ON area_relations(area_id, order_index);
+                CREATE INDEX IF NOT EXISTS idx_area_components_area ON area_components(area_id);
+                CREATE INDEX IF NOT EXISTS idx_area_components_order ON area_components(area_id, order_index);
+                CREATE INDEX IF NOT EXISTS idx_area_element_tags_name ON area_element_tags(name);
+                CREATE INDEX IF NOT EXISTS idx_area_element_tag_assoc_relation ON area_element_tag_associations(area_relation_id);
+                CREATE INDEX IF NOT EXISTS idx_area_element_tag_assoc_component ON area_element_tag_associations(area_component_id);
+                CREATE INDEX IF NOT EXISTS idx_area_element_tag_assoc_tag ON area_element_tag_associations(tag_id);
+                CREATE INDEX IF NOT EXISTS idx_area_filtered_order_area_tag ON area_filtered_order(area_id, filter_tag_id);
+                CREATE INDEX IF NOT EXISTS idx_area_filtered_order_element ON area_filtered_order(element_type, element_id);
+                CREATE INDEX IF NOT EXISTS idx_area_filtered_order_order ON area_filtered_order(area_id, filter_tag_id, order_index);
+
+                -- Índices para procesos
+                CREATE INDEX IF NOT EXISTS idx_processes_active ON processes(is_active) WHERE is_active = 1;
+                CREATE INDEX IF NOT EXISTS idx_processes_pinned ON processes(is_pinned, pinned_order);
+                CREATE INDEX IF NOT EXISTS idx_process_items_order ON process_items(process_id, step_order);
+                CREATE INDEX IF NOT EXISTS idx_process_execution_history_process ON process_execution_history(process_id);
+
+                -- Índices para paneles
+                CREATE INDEX IF NOT EXISTS idx_pinned_category ON pinned_panels(category_id);
+                CREATE INDEX IF NOT EXISTS idx_pinned_last_opened ON pinned_panels(last_opened DESC);
+                CREATE INDEX IF NOT EXISTS idx_pinned_active ON pinned_panels(is_active);
+                CREATE INDEX IF NOT EXISTS idx_pinned_type ON pinned_panels(panel_type);
+                CREATE INDEX IF NOT EXISTS idx_pinned_process_panels_process ON pinned_process_panels(process_id);
+
+                -- Índices para navegador
+                CREATE INDEX IF NOT EXISTS idx_bookmarks_order ON bookmarks(order_index);
+                CREATE INDEX IF NOT EXISTS idx_bookmarks_url ON bookmarks(url);
+                CREATE INDEX IF NOT EXISTS idx_speed_dials_position ON speed_dials(position);
+                CREATE INDEX IF NOT EXISTS idx_session_tabs_session ON session_tabs(session_id);
+
+                -- Índices para búsqueda
+                CREATE INDEX IF NOT EXISTS idx_search_history_timestamp ON search_history(search_timestamp DESC);
+                CREATE INDEX IF NOT EXISTS idx_search_history_query ON search_history(query);
+                CREATE INDEX IF NOT EXISTS idx_search_stats_count ON search_stats(search_count DESC);
+                CREATE INDEX IF NOT EXISTS idx_search_stats_last ON search_stats(last_searched DESC);
+
+                -- Índices para colecciones y componentes
+                CREATE INDEX IF NOT EXISTS idx_smart_collections_active ON smart_collections(is_active) WHERE is_active = 1;
+                CREATE INDEX IF NOT EXISTS idx_smart_collection_items_collection ON smart_collection_items(collection_id);
+                CREATE INDEX IF NOT EXISTS idx_smart_collection_items_item ON smart_collection_items(item_id);
+
+                -- Índices para notebook
+                CREATE INDEX IF NOT EXISTS idx_notebook_tabs_category ON notebook_tabs(category_id);
+                CREATE INDEX IF NOT EXISTS idx_notebook_tabs_position ON notebook_tabs(position);
+                CREATE INDEX IF NOT EXISTS idx_notebook_tabs_updated ON notebook_tabs(updated_at DESC);
+
+                -- Índices para sesiones
+                CREATE INDEX IF NOT EXISTS idx_sessions_valid ON sessions(is_valid, expires_at);
+
+                -- ========== CONFIGURACIÓN INICIAL ==========
                 INSERT OR IGNORE INTO settings (key, value) VALUES
                     ('theme', '"dark"'),
                     ('panel_width', '300'),
@@ -549,7 +884,8 @@ class DBManager:
 
         conn.commit()
         # Don't close the connection - it's managed by self.connection
-        logger.info("Database schema created successfully with COMPLETE SCHEMA")
+        logger.info("✅ Database schema created successfully - COMPLETE SCHEMA v3.0.0")
+        logger.info("📊 Schema includes ALL migrations: Projects, Areas, Tags, FTS5, Drafts, and more")
 
     def execute_query(self, query: str, params: tuple = ()) -> List[Dict]:
         """
