@@ -709,6 +709,36 @@ class DBManager:
                     avg_execution_time_ms REAL DEFAULT 0.0
                 );
 
+                -- ========== TABLAS (ESTRUCTURA MATRICIAL) ==========
+
+                -- Tabla de definiciones de tablas
+                CREATE TABLE IF NOT EXISTS tables (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    description TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                -- ========== CALENDARIO ==========
+
+                -- Tabla de eventos de calendario
+                CREATE TABLE IF NOT EXISTS calendar_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    item_id INTEGER,
+                    event_datetime TIMESTAMP NOT NULL,
+                    title TEXT,
+                    description TEXT,
+                    event_type TEXT DEFAULT 'reminder',
+                    priority TEXT DEFAULT 'medium',
+                    status TEXT DEFAULT 'pending',
+                    color TEXT,
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+                );
+
                 -- ========== COLECCIONES Y COMPONENTES ==========
 
                 -- Tabla de colecciones inteligentes
@@ -891,6 +921,14 @@ class DBManager:
                 CREATE INDEX IF NOT EXISTS idx_search_stats_count ON search_stats(search_count DESC);
                 CREATE INDEX IF NOT EXISTS idx_search_stats_last ON search_stats(last_searched DESC);
 
+                -- Índices para tables
+                CREATE INDEX IF NOT EXISTS idx_tables_name ON tables(name);
+
+                -- Índices para calendar_events
+                CREATE INDEX IF NOT EXISTS idx_calendar_events_item ON calendar_events(item_id);
+                CREATE INDEX IF NOT EXISTS idx_calendar_events_datetime ON calendar_events(event_datetime);
+                CREATE INDEX IF NOT EXISTS idx_calendar_events_status ON calendar_events(status);
+
                 -- Índices para colecciones y componentes
                 CREATE INDEX IF NOT EXISTS idx_smart_collections_active ON smart_collections(is_active) WHERE is_active = 1;
                 CREATE INDEX IF NOT EXISTS idx_smart_collection_items_collection ON smart_collection_items(collection_id);
@@ -923,12 +961,13 @@ class DBManager:
         logger.info("DATABASE SCHEMA CREATED SUCCESSFULLY - COMPLETE SCHEMA v3.0.0")
         logger.info("=" * 80)
         logger.info("Schema includes:")
-        logger.info("  - 46+ Base tables (categories, items, listas, etc.)")
+        logger.info("  - 51 Base tables (categories, items, listas, tables, calendar, etc.)")
         logger.info("  - Projects system (8 tables)")
         logger.info("  - Areas system (7 tables)")
         logger.info("  - Tags system (tags, item_tags, category_tags, category_tags_category)")
         logger.info("  - FTS5 virtual tables (items_fts, categories_fts)")
-        logger.info("  - 120+ Optimized indexes")
+        logger.info("  - Tables & Calendar (tables, calendar_events)")
+        logger.info("  - 130+ Optimized indexes")
         logger.info("  - All migrations integrated")
         logger.info("=" * 80)
 
