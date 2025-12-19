@@ -739,6 +739,34 @@ class DBManager:
                     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
                 );
 
+                -- Tabla de alertas de items
+                CREATE TABLE IF NOT EXISTS item_alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    item_id INTEGER,
+                    calendar_event_id INTEGER,
+                    alert_datetime TIMESTAMP NOT NULL,
+                    alert_title TEXT,
+                    alert_message TEXT,
+                    priority TEXT DEFAULT 'medium',
+                    status TEXT DEFAULT 'active',
+                    is_enabled BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE,
+                    FOREIGN KEY (calendar_event_id) REFERENCES calendar_events(id) ON DELETE SET NULL
+                );
+
+                -- Tabla de historial de alertas
+                CREATE TABLE IF NOT EXISTS alert_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    alert_id INTEGER,
+                    item_id INTEGER NOT NULL,
+                    triggered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    user_action TEXT,
+                    FOREIGN KEY (alert_id) REFERENCES item_alerts(id) ON DELETE SET NULL,
+                    FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+                );
+
                 -- ========== COLECCIONES Y COMPONENTES ==========
 
                 -- Tabla de colecciones inteligentes
@@ -929,6 +957,10 @@ class DBManager:
                 CREATE INDEX IF NOT EXISTS idx_calendar_events_datetime ON calendar_events(event_datetime);
                 CREATE INDEX IF NOT EXISTS idx_calendar_events_status ON calendar_events(status);
 
+                -- Índices para alertas
+                CREATE INDEX IF NOT EXISTS idx_alert_history_item ON alert_history(item_id);
+                CREATE INDEX IF NOT EXISTS idx_alert_history_triggered ON alert_history(triggered_at DESC);
+
                 -- Índices para colecciones y componentes
                 CREATE INDEX IF NOT EXISTS idx_smart_collections_active ON smart_collections(is_active) WHERE is_active = 1;
                 CREATE INDEX IF NOT EXISTS idx_smart_collection_items_collection ON smart_collection_items(collection_id);
@@ -961,13 +993,13 @@ class DBManager:
         logger.info("DATABASE SCHEMA CREATED SUCCESSFULLY - COMPLETE SCHEMA v3.0.0")
         logger.info("=" * 80)
         logger.info("Schema includes:")
-        logger.info("  - 51 Base tables (categories, items, listas, tables, calendar, etc.)")
+        logger.info("  - 53 Base tables (categories, items, listas, tables, calendar, alerts, etc.)")
         logger.info("  - Projects system (8 tables)")
         logger.info("  - Areas system (7 tables)")
         logger.info("  - Tags system (tags, item_tags, category_tags, category_tags_category)")
         logger.info("  - FTS5 virtual tables (items_fts, categories_fts)")
-        logger.info("  - Tables & Calendar (tables, calendar_events)")
-        logger.info("  - 130+ Optimized indexes")
+        logger.info("  - Tables & Calendar (tables, calendar_events, item_alerts, alert_history)")
+        logger.info("  - 132+ Optimized indexes")
         logger.info("  - All migrations integrated")
         logger.info("=" * 80)
 
