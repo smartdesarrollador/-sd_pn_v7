@@ -130,7 +130,7 @@ class MinimizedItemButton(QPushButton):
             QPushButton {{
                 background-color: {COLORS['button_normal']};
                 color: {COLORS['text_primary']};
-                border: {DIMENSIONS['border_width']}px solid {border_color};
+                border: 2px solid {border_color};
                 border-radius: {DIMENSIONS['border_radius']}px;
                 padding: 0px;
             }}
@@ -380,7 +380,9 @@ class LeftSidebarManager(QWidget):
         self.setStyleSheet(f"""
             LeftSidebarManager {{
                 background-color: {COLORS['sidebar_background']};
-                border: {DIMENSIONS['border_width']}px solid {COLORS['separator']};
+                border-top: 1px solid {COLORS['separator']};
+                border-bottom: 1px solid {COLORS['separator']};
+                border-right: 3px solid {COLORS['separator']};
                 border-left: none;
                 border-radius: {DIMENSIONS['border_radius']}px;
             }}
