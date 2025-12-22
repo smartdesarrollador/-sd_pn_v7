@@ -1062,7 +1062,7 @@ class MainWindow(QMainWindow):
                 # Create viewer panel (AppBar will be registered in showEvent)
                 self.project_area_viewer_panel = ProjectAreaViewerPanel(
                     db_manager=db_manager,
-                    parent=None  # No parent for floating panel
+                    parent=self  # Pass self (MainWindow) for relative positioning
                 )
 
                 # Connect signals
@@ -1070,6 +1070,9 @@ class MainWindow(QMainWindow):
                 self.project_area_viewer_panel.closed.connect(self.on_viewer_panel_closed)
 
                 logger.info("Viewer panel created and signals connected")
+
+            # Position the window explicitly before showing to avoid visual jump
+            self.project_area_viewer_panel.position_window(self)
 
             # Show the panel
             self.project_area_viewer_panel.show()
