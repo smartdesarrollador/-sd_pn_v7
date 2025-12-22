@@ -112,6 +112,9 @@ class Sidebar(QWidget):
     # Signal emitted when areas button is clicked
     areas_clicked = pyqtSignal()
 
+    # Signal emitted when project/area viewer button is clicked
+    project_area_viewer_clicked = pyqtSignal()
+
     # Signal emitted when close app button is clicked from menu
     close_app_requested = pyqtSignal()
 
@@ -311,6 +314,37 @@ class Sidebar(QWidget):
         """)
         self.bulk_item_creator_button.clicked.connect(self.on_bulk_item_creator_clicked)
         main_layout.addWidget(self.bulk_item_creator_button)
+
+        # Project/Area Viewer button (📋)
+        self.project_area_viewer_button = QPushButton("📋")
+        self.project_area_viewer_button.setFixedSize(70, 40)
+        self.project_area_viewer_button.setToolTip("Listar Proyectos/Áreas")
+        self.project_area_viewer_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.project_area_viewer_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.get_color('background_deep')};
+                color: {self.theme.get_color('text_primary')};
+                border: none;
+                border-bottom: 2px solid {self.theme.get_color('background_deep')};
+                font-size: 14pt;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #00ff88,
+                    stop:1 #00ccff
+                );
+                border-bottom: 2px solid #00ff88;
+                color: #1e1e1e;
+            }}
+            QPushButton:pressed {{
+                background-color: {self.theme.get_color('surface')};
+                transform: scale(0.95);
+            }}
+        """)
+        self.project_area_viewer_button.clicked.connect(self.on_project_area_viewer_clicked)
+        main_layout.addWidget(self.project_area_viewer_button)
 
         # MOVED TO QUICK ACCESS PANEL: Advanced Search button
         # self.advanced_search_button = QPushButton("🔍⚡")
@@ -955,6 +989,10 @@ class Sidebar(QWidget):
         """Handle bulk item creator button click"""
         self.bulk_item_creator_clicked.emit()
 
+    def on_project_area_viewer_clicked(self):
+        """Handle project/area viewer button click"""
+        self.project_area_viewer_clicked.emit()
+
     def on_quick_create_clicked(self):
         """Handle quick create button click"""
         self.quick_create_clicked.emit()
@@ -986,6 +1024,7 @@ class Sidebar(QWidget):
                 self.quick_access_panel.image_gallery_clicked.connect(lambda: self.image_gallery_clicked.emit())
                 self.quick_access_panel.projects_clicked.connect(lambda: self.projects_clicked.emit())
                 self.quick_access_panel.areas_clicked.connect(lambda: self.areas_clicked.emit())
+                self.quick_access_panel.project_area_viewer_clicked.connect(lambda: self.project_area_viewer_clicked.emit())
                 self.quick_access_panel.close_app_clicked.connect(lambda: self.close_app_requested.emit())
 
         # Toggle visibility

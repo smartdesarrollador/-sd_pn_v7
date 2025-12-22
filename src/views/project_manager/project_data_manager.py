@@ -711,3 +711,348 @@ Python fue creado por Guido van Rossum y lanzado por primera vez en 1991. El nom
             })
 
         return summary
+
+    def get_area_full_data(self, area_id: int) -> Optional[Dict]:
+        """
+        Obtener datos completos del área agrupados por tags
+
+        Args:
+            area_id: ID del área
+
+        Returns:
+            Diccionario con la misma estructura que get_project_full_data()
+            pero para áreas en lugar de proyectos
+        """
+        # Si no hay DBManager, usar datos mock
+        if not self.db:
+            return self._get_mock_area_data(area_id)
+
+        # Obtener datos reales de la BD
+        return self._get_real_area_data(area_id)
+
+    def _get_mock_area_data(self, area_id: int) -> Dict:
+        """
+        Obtener datos mock de área para testing
+
+        Args:
+            area_id: ID del área
+
+        Returns:
+            Datos mock del área
+        """
+        return {
+            'project_id': area_id,  # Usar mismo campo para compatibilidad
+            'project_name': f'Área de Testing {area_id}',
+            'project_icon': '📊',
+            'tags': [
+                {
+                    'tag_name': 'frontend',
+                    'tag_color': '#3776ab',
+                    'groups': [
+                        {
+                            'type': 'category',
+                            'name': 'COMPONENTES',
+                            'items': [
+                                {
+                                    'id': 101,
+                                    'label': 'Componente de Header',
+                                    'content': 'import React from "react";\n\nconst Header = () => {\n  return <header>Mi App</header>;\n};',
+                                    'type': 'CODE',
+                                    'description': 'Componente React de ejemplo'
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            'ungrouped_items': []
+        }
+
+    def _get_real_area_data(self, area_id: int) -> Optional[Dict]:
+        """
+        Obtener datos reales del área desde la base de datos
+
+        Usa la misma lógica que proyectos pero con tablas de áreas
+
+        Args:
+            area_id: ID del área
+
+        Returns:
+            Diccionario con estructura de datos del área o None si no existe
+        """
+        try:
+            # 1. Obtener información básica del área
+            area = self.db.get_area(area_id)
+            if not area:
+                return None
+
+            # 2. Obtener TODOS los tags que tienen elementos asociados al área
+            conn = self.db.connect()
+            cursor = conn.execute("""
+                SELECT DISTINCT aet.id, aet.name, aet.color
+                FROM area_element_tag_associations ta
+                JOIN area_element_tags aet ON ta.tag_id = aet.id
+                JOIN area_relations ar ON ta.area_relation_id = ar.id
+                LEFT JOIN area_tag_orders ato ON ato.area_id = ar.area_id AND ato.tag_id = aet.id
+                WHERE ar.area_id = ?
+                ORDER BY COALESCE(ato.order_index, 999999), aet.name ASC
+            """, (area_id,))
+            area_tags = [dict(row) for row in cursor.fetchall()]
+
+            # 3. Construir estructura de tags con sus grupos
+            tags_data = []
+
+            for area_tag in area_tags:
+                tag_id = area_tag['id']
+                tag_name = area_tag['name']
+                tag_color = area_tag.get('color', '#808080')
+
+                # Obtener todas las relaciones del área
+                all_relations = self.db.get_area_relations(area_id)
+
+                # Filtrar relaciones que están asociadas a este tag
+                tag_relations = self._get_area_relations_for_tag(tag_id, all_relations)
+
+                # Aplicar orden filtrado si existe para este tag
+                tag_relations = self._apply_area_filtered_order(area_id, tag_id, tag_relations)
+
+                # Procesar relaciones
+                groups_data = []
+
+                for rel in tag_relations:
+                    entity_type = rel['entity_type']
+                    entity_id = rel['entity_id']
+
+                    if entity_type == 'category':
+                        items = self.db.get_items_by_category(entity_id)
+                        if items:
+                            category_name = self._get_category_name(entity_id)
+                            groups_data.append({
+                                'type': 'category',
+                                'name': category_name,
+                                'items': self._format_items(items)
+                            })
+
+                    elif entity_type == 'list':
+                        items = self.db.get_items_by_lista(entity_id)
+                        if items:
+                            list_name = items[0].get('lista_name', 'Lista sin nombre') if items else 'Lista'
+                            groups_data.append({
+                                'type': 'list',
+                                'name': list_name,
+                                'items': self._format_items(items)
+                            })
+
+                    elif entity_type == 'tag':
+                        items = self.db.get_items_by_tag_id(entity_id)
+                        if items:
+                            tag_name_item = self._get_item_tag_name(entity_id)
+                            groups_data.append({
+                                'type': 'tag',
+                                'name': tag_name_item,
+                                'items': self._format_items(items)
+                            })
+
+                    elif entity_type == 'table':
+                        items = self.db.get_items_by_table(entity_id)
+                        if items:
+                            table_name = self._get_table_name(entity_id)
+                            groups_data.append({
+                                'type': 'table',
+                                'name': table_name,
+                                'items': self._format_items(items)
+                            })
+
+                    elif entity_type == 'item':
+                        item = self.db.get_item(entity_id)
+                        if item:
+                            groups_data.append({
+                                'type': 'item',
+                                'name': item.get('label', 'Item sin nombre'),
+                                'items': self._format_items([item])
+                            })
+
+                    elif entity_type == 'process':
+                        process = self.db.get_process(entity_id)
+                        if process:
+                            groups_data.append({
+                                'type': 'process',
+                                'name': process.get('name', 'Proceso sin nombre'),
+                                'items': []
+                            })
+
+                # Solo agregar el tag si tiene grupos con items
+                if groups_data:
+                    tags_data.append({
+                        'tag_name': tag_name,
+                        'tag_color': tag_color,
+                        'groups': groups_data
+                    })
+
+            # 4. Obtener elementos sin tag de área
+            unclassified_items = self._get_area_unclassified_elements(area_id)
+
+            # 5. Obtener items sin agrupar
+            ungrouped_items = self._get_area_ungrouped_items(area_id, tags_data, unclassified_items)
+
+            # 6. Construir y retornar estructura final
+            # Usar mismo formato que proyectos para compatibilidad con el visor
+            return {
+                'project_id': area_id,  # Usar mismo campo para compatibilidad
+                'project_name': area.get('name', 'Área sin nombre'),
+                'project_icon': area.get('icon', '📊'),
+                'tags': tags_data,
+                'unclassified_elements': unclassified_items,
+                'ungrouped_items': ungrouped_items
+            }
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error obteniendo datos reales del área {area_id}: {e}")
+            return self._get_mock_area_data(area_id)
+
+    def _get_area_relations_for_tag(self, tag_id: int, all_relations: List[Dict]) -> List[Dict]:
+        """
+        Obtiene las relaciones de área asociadas a un tag específico
+
+        Args:
+            tag_id: ID del tag de área
+            all_relations: Lista de todas las relaciones del área
+
+        Returns:
+            Lista de relaciones asociadas al tag
+        """
+        tag_associations = self.db.get_area_relations_by_tag(tag_id)
+        relation_ids = [assoc['id'] for assoc in tag_associations]
+        return [rel for rel in all_relations if rel['id'] in relation_ids]
+
+    def _apply_area_filtered_order(self, area_id: int, filter_tag_id: int,
+                                    tag_relations: List[Dict]) -> List[Dict]:
+        """
+        Aplica el orden filtrado a las relaciones de área de un tag
+
+        Args:
+            area_id: ID del área
+            filter_tag_id: ID del tag de área
+            tag_relations: Lista de relaciones del tag
+
+        Returns:
+            Lista de relaciones ordenadas
+        """
+        try:
+            filtered_orders = self.db.get_area_filtered_order(area_id, filter_tag_id)
+
+            if not filtered_orders:
+                return sorted(tag_relations, key=lambda x: x.get('order_index', 0))
+
+            ordered_relations = []
+            unordered_relations = []
+
+            for rel in tag_relations:
+                element_type = 'relation'
+                element_id = rel['id']
+                key = (element_type, element_id)
+
+                if key in filtered_orders:
+                    ordered_relations.append((filtered_orders[key], rel))
+                else:
+                    unordered_relations.append(rel)
+
+            ordered_relations.sort(key=lambda x: x[0])
+            result = [rel for _, rel in ordered_relations]
+
+            unordered_relations.sort(key=lambda x: x.get('order_index', 0))
+            result.extend(unordered_relations)
+
+            return result
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error aplicando orden filtrado de área: {e}")
+            return sorted(tag_relations, key=lambda x: x.get('order_index', 0))
+
+    def _get_area_unclassified_elements(self, area_id: int) -> List[Dict]:
+        """
+        Obtiene elementos del área que NO tienen tag de área asociado
+
+        Args:
+            area_id: ID del área
+
+        Returns:
+            Lista de elementos sin clasificar
+        """
+        try:
+            conn = self.db.connect()
+            cursor = conn.execute("""
+                SELECT ar.*
+                FROM area_relations ar
+                LEFT JOIN area_element_tag_associations ta ON ar.id = ta.area_relation_id
+                WHERE ar.area_id = ? AND ta.id IS NULL
+            """, (area_id,))
+
+            unclassified_relations = cursor.fetchall()
+            unclassified_elements = []
+
+            for rel in unclassified_relations:
+                rel_dict = dict(rel)
+                entity_type = rel_dict['entity_type']
+                entity_id = rel_dict['entity_id']
+
+                if entity_type == 'category':
+                    name = self._get_category_name(entity_id)
+                    items = self.db.get_items_by_category(entity_id)
+                elif entity_type == 'list':
+                    cursor2 = conn.execute("SELECT name FROM listas WHERE id = ?", (entity_id,))
+                    row = cursor2.fetchone()
+                    name = row['name'] if row else f'Lista {entity_id}'
+                    items = self.db.get_items_by_lista(entity_id)
+                elif entity_type == 'tag':
+                    name = self._get_item_tag_name(entity_id)
+                    items = self.db.get_items_by_tag_id(entity_id)
+                elif entity_type == 'table':
+                    name = self._get_table_name(entity_id)
+                    items = self.db.get_items_by_table(entity_id)
+                elif entity_type == 'item':
+                    item = self.db.get_item(entity_id)
+                    name = item.get('label', 'Item sin nombre') if item else f'Item {entity_id}'
+                    items = [item] if item else []
+                elif entity_type == 'process':
+                    process = self.db.get_process(entity_id)
+                    name = process.get('name', 'Proceso sin nombre') if process else f'Proceso {entity_id}'
+                    items = []
+                else:
+                    continue
+
+                if items or entity_type == 'process':
+                    unclassified_elements.append({
+                        'type': entity_type,
+                        'name': name,
+                        'items': self._format_items(items) if items else []
+                    })
+
+            return unclassified_elements
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error obteniendo elementos sin clasificar de área: {e}")
+            return []
+
+    def _get_area_ungrouped_items(self, area_id: int, tags_data: List[Dict],
+                                   unclassified_elements: List[Dict] = None) -> List[Dict]:
+        """
+        Obtiene items del área que no están en ningún elemento agrupado
+
+        Args:
+            area_id: ID del área
+            tags_data: Datos de tags ya procesados
+            unclassified_elements: Elementos sin clasificar
+
+        Returns:
+            Lista de items sueltos
+        """
+        # Por ahora retornar lista vacía
+        # En futuras versiones se puede implementar lógica para items completamente sueltos
+        return []

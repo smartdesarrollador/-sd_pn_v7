@@ -217,6 +217,7 @@ class MainWindow(QMainWindow):
         self.sidebar.image_gallery_clicked.connect(self.on_image_gallery_clicked)
         self.sidebar.projects_clicked.connect(self.on_projects_clicked)
         self.sidebar.areas_clicked.connect(self.on_areas_clicked)
+        self.sidebar.project_area_viewer_clicked.connect(self.toggle_viewer_panel)
         self.sidebar.table_creator_clicked.connect(self.on_table_creator_clicked)
         self.sidebar.tables_manager_clicked.connect(self.on_tables_manager_clicked)
         self.sidebar.favorites_clicked.connect(self.on_favorites_clicked)
@@ -1030,6 +1031,72 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'areas_window') and self.areas_window:
             self.areas_window.deleteLater()
             self.areas_window = None
+
+    def toggle_viewer_panel(self):
+        """Toggle Project/Area Viewer Panel"""
+        try:
+            logger.info("Project/Area Viewer Panel toggled")
+
+            # TOGGLE BEHAVIOR: If panel exists and is visible, close it
+            if hasattr(self, 'project_area_viewer_panel') and self.project_area_viewer_panel and self.project_area_viewer_panel.isVisible():
+                logger.debug("Viewer panel is visible - closing it (toggle)")
+                self.project_area_viewer_panel.hide()
+                return
+
+            # Create viewer panel if it doesn't exist
+            if not hasattr(self, 'project_area_viewer_panel') or not self.project_area_viewer_panel:
+                from src.views.project_area_viewer_panel import ProjectAreaViewerPanel
+
+                # Get db_manager from controller's config_manager
+                db_manager = self.config_manager.db if self.config_manager else None
+
+                if not db_manager:
+                    logger.error("No database manager available")
+                    QMessageBox.warning(
+                        self,
+                        "Error",
+                        "No se pudo acceder a la base de datos"
+                    )
+                    return
+
+                # Create viewer panel (AppBar will be registered in showEvent)
+                self.project_area_viewer_panel = ProjectAreaViewerPanel(
+                    db_manager=db_manager,
+                    parent=None  # No parent for floating panel
+                )
+
+                # Connect signals
+                self.project_area_viewer_panel.item_copied.connect(self.on_item_copied_from_viewer)
+                self.project_area_viewer_panel.closed.connect(self.on_viewer_panel_closed)
+
+                logger.info("Viewer panel created and signals connected")
+
+            # Show the panel
+            self.project_area_viewer_panel.show()
+            logger.info("Viewer panel opened")
+
+        except Exception as e:
+            logger.error(f"Error toggling viewer panel: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Error al abrir panel de visualización:\n{str(e)}\n\nRevisa widget_sidebar_error.log"
+            )
+
+    def on_viewer_panel_closed(self):
+        """Handle viewer panel closed"""
+        logger.info("Viewer panel closed")
+        # Keep the instance for reuse when reopened
+
+    def on_item_copied_from_viewer(self, item):
+        """Handle item copied from viewer panel"""
+        try:
+            logger.info(f"Item copied from viewer: {item.get('label', 'Unknown')}")
+            # Delegate to main controller's copy handler
+            if self.controller and hasattr(self.controller, 'copy_item_content'):
+                self.controller.copy_item_content(item)
+        except Exception as e:
+            logger.error(f"Error copying item from viewer: {e}", exc_info=True)
 
     def on_item_edit_requested_from_search(self, item):
         """Handle item edit request from Advanced Search Window"""
