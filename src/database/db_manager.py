@@ -985,6 +985,21 @@ class DBManager:
                     ('animation_speed', '300'),
                     ('opacity', '0.95'),
                     ('max_history', '20');
+
+                -- ========== REGISTROS POR DEFECTO ==========
+                -- Insertar categoría por defecto
+                INSERT OR IGNORE INTO categories (name, icon, order_index, is_active, is_predefined)
+                VALUES ('sin categoria', '📋', 0, 1, 0);
+
+                -- Insertar tag de categoría por defecto
+                INSERT OR IGNORE INTO category_tags (name)
+                VALUES ('sin etiqueta');
+
+                -- Relacionar la categoría con el tag en la tabla pivot
+                INSERT OR IGNORE INTO category_tags_category (category_id, tag_id)
+                SELECT c.id, t.id
+                FROM categories c, category_tags t
+                WHERE c.name = 'sin categoria' AND t.name = 'sin etiqueta';
             """)
 
         conn.commit()

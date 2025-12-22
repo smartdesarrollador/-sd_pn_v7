@@ -393,20 +393,39 @@ class ComponentManager:
         try:
             # Check if category already exists
             categories = self.db.get_categories()
+
+            # First check if 🧩 Componentes already exists
             for category in categories:
                 if category.get('name') == '🧩 Componentes':
                     ComponentManager.COMPONENTS_CATEGORY_ID = category.get('id')
                     logger.debug(f"Components category already exists: ID {ComponentManager.COMPONENTS_CATEGORY_ID}")
                     return ComponentManager.COMPONENTS_CATEGORY_ID
 
-            # Create the category
+            # If no categories exist at all, the default category should have been created by DB init
+            # Check if default category "sin categoria" exists
+            for category in categories:
+                if category.get('name') == 'sin categoria':
+                    # Use default category temporarily as components category
+                    ComponentManager.COMPONENTS_CATEGORY_ID = category.get('id')
+                    logger.debug(f"Using default category as components category: ID {ComponentManager.COMPONENTS_CATEGORY_ID}")
+                    return ComponentManager.COMPONENTS_CATEGORY_ID
+
+            # Create the Componentes category with order_index to be after default category
+            # Get max order_index
+            max_order = 0
+            for category in categories:
+                order_idx = category.get('order_index', 0)
+                if order_idx > max_order:
+                    max_order = order_idx
+
             category_id = self.db.add_category(
                 name='🧩 Componentes',
                 icon='🧩',
-                is_predefined=True  # Mark as system category
+                is_predefined=True,  # Mark as system category
+                order_index=max_order + 1  # Ensure it's after existing categories
             )
             ComponentManager.COMPONENTS_CATEGORY_ID = category_id
-            logger.info(f"Created components category: ID {category_id}")
+            logger.info(f"Created components category: ID {category_id}, order_index: {max_order + 1}")
             return category_id
 
         except Exception as e:

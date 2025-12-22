@@ -15,6 +15,9 @@ class CategorySelectorSection(QWidget):
     """
     Sección para seleccionar o crear categoría
 
+    NOTA: Actualmente asigna automáticamente la categoría con ID 1 ("sin categoria")
+    y oculta los controles visuales.
+
     Señales:
         category_changed(int | None): Emitida cuando cambia la categoría seleccionada
         create_category_clicked(): Emitida cuando se hace clic en botón "+"
@@ -24,10 +27,15 @@ class CategorySelectorSection(QWidget):
     category_changed = pyqtSignal(object)  # int | None
     create_category_clicked = pyqtSignal()
 
+    # Categoría fija asignada automáticamente
+    _FIXED_CATEGORY_ID = 1  # "sin categoria"
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._setup_ui()
         self._apply_styles()
+        # Ocultar toda la sección
+        self.setVisible(False)
 
     def _setup_ui(self):
         """Configura la interfaz"""
@@ -140,8 +148,13 @@ class CategorySelectorSection(QWidget):
         logger.debug(f"Cargadas {len(categories)} categorías")
 
     def get_category_id(self) -> int | None:
-        """Obtiene el ID de la categoría seleccionada"""
-        return self.category_combo.currentData()
+        """
+        Obtiene el ID de la categoría seleccionada
+
+        Returns:
+            Siempre retorna 1 (categoría "sin categoria")
+        """
+        return self._FIXED_CATEGORY_ID
 
     def set_category_id(self, category_id: int | None):
         """
@@ -172,7 +185,6 @@ class CategorySelectorSection(QWidget):
 
         Returns:
             Tupla (is_valid, error_message)
+            Siempre retorna (True, "") ya que la categoría está fija
         """
-        if self.get_category_id() is None:
-            return False, "Debe seleccionar una categoría"
         return True, ""
