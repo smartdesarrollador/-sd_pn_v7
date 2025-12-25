@@ -913,6 +913,14 @@ class BulkItemCreatorDialog(QWidget):
             )
             logger.debug(f"Lista creada: lista_id={lista_id}")
 
+            # Paso 1.5: Preparar tags para los items
+            # Combinar tags del usuario + tag automático con nombre de la lista
+            item_tags_with_list_name = draft.item_tags.copy() if draft.item_tags else []
+            if draft.list_name and draft.list_name not in item_tags_with_list_name:
+                item_tags_with_list_name.append(draft.list_name)
+
+            logger.info(f"Tags para items de lista: {item_tags_with_list_name}")
+
             # Paso 2: Guardar items con list_id
             for item_field in draft.items:
                 if item_field.is_empty():
@@ -926,7 +934,7 @@ class BulkItemCreatorDialog(QWidget):
                         item_type=item_field.item_type,
                         is_sensitive=item_field.is_sensitive,
                         list_id=lista_id,
-                        tags=draft.item_tags  # Tags opcionales (sin tag especial)
+                        tags=item_tags_with_list_name  # Tags opcionales + tag automático del nombre de la lista
                     )
 
                     if item_id:
