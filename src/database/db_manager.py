@@ -3226,8 +3226,12 @@ class DBManager:
         '''
         results = self.execute_query(query, (lista_id,))
 
-        # Descifrar contenido si es necesario
+        # Cargar tags y descifrar contenido para cada item
         for item in results:
+            # Cargar tags desde tabla relacional
+            item['tags'] = self.get_tags_by_item(item['id'])
+
+            # Descifrar contenido si es necesario
             if item.get('is_sensitive'):
                 try:
                     item['content'] = self.encryption_manager.decrypt(item['content'])

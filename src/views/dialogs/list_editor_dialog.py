@@ -345,16 +345,23 @@ class ListEditorDialog(QDialog):
 
             # Cargar tags comunes (tags que aparecen en todos los items)
             if self.tag_selector and items:
+                logger.info(f"[LIST_EDITOR] Loading tags from {len(items)} items")
+
                 # Extraer tags de todos los items
                 all_tags_sets = []
-                for item in items:
+                for idx, item in enumerate(items):
+                    logger.debug(f"[LIST_EDITOR] Item {idx}: has 'tags' key = {'tags' in item}, value = {item.get('tags')}")
+
                     if 'tags' in item and item['tags']:
                         # Los tags pueden venir como string separado por comas o como lista
                         if isinstance(item['tags'], str):
                             tags = [t.strip() for t in item['tags'].split(',') if t.strip()]
                         else:
                             tags = item['tags'] if isinstance(item['tags'], list) else []
+                        logger.debug(f"[LIST_EDITOR] Item {idx} parsed tags: {tags}")
                         all_tags_sets.append(set(tags))
+                    else:
+                        logger.debug(f"[LIST_EDITOR] Item {idx} has no tags")
 
                 # Encontrar tags comunes (intersección de todos los sets)
                 if all_tags_sets:
