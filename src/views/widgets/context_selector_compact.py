@@ -1,11 +1,9 @@
 """
 Widget de selección de contexto COMPACTO para el Visor de Proyectos/Áreas
 
-SOLO LECTURA: No permite crear proyectos ni áreas, solo seleccionar existentes.
-
 Componentes:
-- Selector de Proyecto (dropdown solo lectura)
-- Selector de Área (dropdown solo lectura)
+- Selector de Proyecto (dropdown + botón crear)
+- Selector de Área (dropdown + botón crear)
 
 CRÍTICO: Proyecto y Área son MUTUAMENTE EXCLUYENTES
 - Al seleccionar Proyecto → Área se resetea a "Ninguno"
@@ -14,13 +12,15 @@ CRÍTICO: Proyecto y Área son MUTUAMENTE EXCLUYENTES
 Señales:
 - project_changed(int): Emitida cuando se selecciona un proyecto
 - area_changed(int): Emitida cuando se selecciona un área
+- create_project_clicked: Emitida cuando se hace click en "+ Proyecto"
+- create_area_clicked: Emitida cuando se hace click en "+ Área"
 
-Versión: 1.0
-Fecha: 2025-12-21
+Versión: 1.1
+Fecha: 2025-12-26
 """
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QFrame
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QFrame, QPushButton
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QFont
@@ -33,16 +33,20 @@ class ContextSelectorCompact(QWidget):
     """
     Widget compacto para seleccionar Proyecto o Área (MUTUAMENTE EXCLUYENTES)
 
-    Solo permite seleccionar elementos existentes. NO permite crear nuevos.
+    Permite seleccionar elementos existentes y crear nuevos mediante botones "+".
 
     Señales:
         project_changed(int): ID del proyecto seleccionado (o None)
         area_changed(int): ID del área seleccionada (o None)
+        create_project_clicked: Solicitud de crear proyecto
+        create_area_clicked: Solicitud de crear área
     """
 
     # Señales
     project_changed = pyqtSignal(object)  # int or None
     area_changed = pyqtSignal(object)  # int or None
+    create_project_clicked = pyqtSignal()
+    create_area_clicked = pyqtSignal()
 
     def __init__(self, parent=None):
         """
@@ -83,30 +87,36 @@ class ContextSelectorCompact(QWidget):
         container_layout.setSpacing(10)
 
         # Fila de Proyecto
-        project_row = self._create_selector_row("Proyecto", "Seleccionar proyecto...")
-        self.project_combo = project_row[1]
-        container_layout.addLayout(project_row[0])
+        project_row_layout, self.project_combo, self.create_project_btn = self._create_selector_row(
+            "Proyecto", "Seleccionar proyecto..."
+        )
+        container_layout.addLayout(project_row_layout)
 
         # Fila de Área
-        area_row = self._create_selector_row("Área", "Ninguno")
-        self.area_combo = area_row[1]
-        container_layout.addLayout(area_row[0])
+        area_row_layout, self.area_combo, self.create_area_btn = self._create_selector_row(
+            "Área", "Ninguno"
+        )
+        container_layout.addLayout(area_row_layout)
 
         layout.addWidget(container)
 
+        # Conectar botones de creación
+        self.create_project_btn.clicked.connect(self.create_project_clicked.emit)
+        self.create_area_btn.clicked.connect(self.create_area_clicked.emit)
+
     def _create_selector_row(self, label_text: str, placeholder: str):
         """
-        Crea una fila con etiqueta + combobox
+        Crea una fila con etiqueta + combobox + botón crear
 
         Args:
             label_text: Texto de la etiqueta
             placeholder: Texto del placeholder
 
         Returns:
-            tuple: (QHBoxLayout, QComboBox)
+            tuple: (QHBoxLayout, QComboBox, QPushButton)
         """
         row = QHBoxLayout()
-        row.setSpacing(10)
+        row.setSpacing(8)
 
         # Etiqueta
         label = QLabel(label_text)
@@ -122,10 +132,34 @@ class ContextSelectorCompact(QWidget):
         combo.setPlaceholderText(placeholder)
         combo.setMinimumHeight(32)
 
+        # Botón "+" para crear
+        create_btn = QPushButton("+")
+        create_btn.setFixedSize(32, 32)
+        create_btn.setToolTip(f"Crear nuevo {label_text.lower()}")
+        create_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        create_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d5d2e;
+                color: #00ff88;
+                border: 2px solid #00ff88;
+                border-radius: 4px;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a7a3c;
+                border-color: #7CFC00;
+            }
+            QPushButton:pressed {
+                background-color: #1a4d2e;
+            }
+        """)
+
         row.addWidget(label)
         row.addWidget(combo, 1)  # Stretch factor 1
+        row.addWidget(create_btn)
 
-        return (row, combo)
+        return (row, combo, create_btn)
 
     def _apply_styles(self):
         """Aplica estilos CSS al widget"""

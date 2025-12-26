@@ -2,13 +2,14 @@
 Widget contenedor de grupo de items
 
 Agrupa items bajo un encabezado de grupo (categoría, lista o tag).
+Para listas, incluye botones de "+ Agregar Item".
 
 Autor: Widget Sidebar Team
-Versión: 1.0
+Versión: 1.1
 """
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame
+from PyQt6.QtCore import Qt, pyqtSignal
 from .headers.group_header import GroupHeaderWidget
 from .items import TextItemWidget, CodeItemWidget, URLItemWidget, PathItemWidget, WebStaticItemWidget
 
@@ -19,9 +20,18 @@ class ItemGroupWidget(QWidget):
 
     Agrupa items bajo un encabezado de grupo.
     Renderiza cada item con el widget apropiado según su tipo.
+    Para listas, incluye botones "+ Agregar Item".
 
     Nivel de jerarquía: Grupos (categorías, listas, tags de items)
+
+    Señales:
+        create_list_clicked: Emitida cuando se hace click en "+" del header (solo listas)
+        add_item_clicked: Emitida cuando se hace click en "+ Agregar Item" (solo listas)
     """
+
+    # Señales
+    create_list_clicked = pyqtSignal()
+    add_item_clicked = pyqtSignal()
 
     def __init__(self, group_name: str, group_type: str = "category", parent=None):
         """
@@ -49,12 +59,71 @@ class ItemGroupWidget(QWidget):
         # Header del grupo
         self.header = GroupHeaderWidget()
         self.header.set_group_info(self.group_name, self.group_type)
+        self.header.create_list_clicked.connect(self.create_list_clicked.emit)
         self.main_layout.addWidget(self.header)
+
+        # Si es lista, agregar barra de "Items" con botones
+        if self.group_type == "list":
+            self._add_items_toolbar()
 
         # Layout de items
         self.items_layout = QVBoxLayout()
         self.items_layout.setSpacing(0)
         self.main_layout.addLayout(self.items_layout)
+
+    def _add_items_toolbar(self):
+        """Agregar barra de herramientas de items (solo para listas)"""
+        toolbar = QFrame()
+        toolbar.setObjectName("itemsToolbar")
+        toolbar.setStyleSheet("""
+            QFrame#itemsToolbar {
+                background-color: #252525;
+                border-top: 1px solid #333;
+                border-bottom: 1px solid #333;
+            }
+        """)
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(40, 8, 15, 8)
+        toolbar_layout.setSpacing(10)
+
+        # Label "Items"
+        items_label = QLabel("📦 Items")
+        items_label.setStyleSheet("""
+            color: #ffffff;
+            font-size: 10px;
+            font-weight: bold;
+        """)
+        toolbar_layout.addWidget(items_label)
+
+        toolbar_layout.addStretch()
+
+        # Botón "+ Agregar Item"
+        add_item_btn = QPushButton("+ Agregar Item")
+        add_item_btn.setFixedHeight(28)
+        add_item_btn.setMinimumWidth(110)
+        add_item_btn.setToolTip("Agregar nuevo item a esta lista")
+        add_item_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_item_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1565C0;
+                color: #ffffff;
+                border: 1px solid #1976D2;
+                border-radius: 4px;
+                font-size: 10px;
+                font-weight: bold;
+                padding: 4px 10px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:pressed {
+                background-color: #0d47a1;
+            }
+        """)
+        add_item_btn.clicked.connect(self.add_item_clicked.emit)
+        toolbar_layout.addWidget(add_item_btn)
+
+        self.main_layout.addWidget(toolbar)
 
     def add_item(self, item_data: dict):
         """

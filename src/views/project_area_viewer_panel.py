@@ -23,7 +23,7 @@ Fecha: 2025-12-21
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QScrollArea, QApplication
+    QScrollArea, QApplication, QInputDialog, QMessageBox, QLineEdit
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QPoint
 from PyQt6.QtGui import QFont, QShortcut, QKeySequence
@@ -33,6 +33,9 @@ from src.views.project_manager.widgets.common.search_bar_widget import SearchBar
 from src.views.project_manager.widgets.headers import ProjectHeaderWidget, ProjectTagHeaderWidget
 from src.views.project_manager.widgets.item_group_widget import ItemGroupWidget
 from src.views.project_manager.project_data_manager import ProjectDataManager
+from src.views.dialogs.add_item_dialog import AddItemDialog
+from src.core.project_element_tag_manager import ProjectElementTagManager
+from src.core.area_element_tag_manager import AreaElementTagManager
 import logging
 import sys
 import ctypes
@@ -104,6 +107,14 @@ class ProjectAreaViewerPanel(QWidget):
 
         # Data manager ✅ FASE 6
         self.data_manager = ProjectDataManager(db_manager)
+
+        # Tag managers (✨ NUEVO - para creación de tags)
+        self.project_tag_manager = ProjectElementTagManager(db_manager) if db_manager else None
+        self.area_tag_manager = AreaElementTagManager(db_manager) if db_manager else None
+
+        # Diálogo de agregar item (✨ NUEVO)
+        self.add_item_dialog = None
+        self.current_lista_id = None  # Lista actualmente seleccionada para agregar items
 
         # Estado interno
         self.current_project_id = None
@@ -399,8 +410,15 @@ class ProjectAreaViewerPanel(QWidget):
         self.context_selector.project_changed.connect(self._on_project_selected)
         self.context_selector.area_changed.connect(self._on_area_selected)
 
+        # Señales de creación del context selector (✨ NUEVO)
+        self.context_selector.create_project_clicked.connect(self._on_create_project)
+        self.context_selector.create_area_clicked.connect(self._on_create_area)
+
         # Señales de tag filter chips
         self.tag_filter_chips.tags_changed.connect(self._on_tags_changed)
+
+        # Señal de creación de tag (✨ NUEVO)
+        self.tag_filter_chips.create_tag_clicked.connect(self._on_create_project_tag)
 
         # Señales de controles de vista ✅ FASE 4
         self.collapse_all_btn.clicked.connect(self._on_collapse_all_clicked)
@@ -1247,6 +1265,19 @@ class ProjectAreaViewerPanel(QWidget):
                 group['type']
             )
 
+            # Conectar señales del grupo (✨ NUEVO)
+            group_widget.create_list_clicked.connect(self._on_create_list)
+
+            # Si es lista, conectar señal de agregar item
+            if group['type'] == 'list':
+                # Necesitamos pasar el ID de la lista al callback
+                # Por ahora, asumimos que group['name'] es el nombre de la lista
+                # y buscamos su ID (TODO: mejorar esto con ID directo en los datos)
+                lista_name = group['name']
+                # Crear lambda con valores capturados
+                add_item_callback = lambda checked=False, ln=lista_name, gw=group_widget: self._on_add_item_from_group(ln, gw)
+                group_widget.add_item_clicked.connect(add_item_callback)
+
             # Agregar items al grupo
             for item_data in group['items']:
                 group_widget.add_item(item_data)
@@ -1315,6 +1346,339 @@ class ProjectAreaViewerPanel(QWidget):
         self.search_bar.setVisible(False)
         self.search_bar.clear_search()
         logger.debug("SearchBar ocultada")
+
+    # === MÉTODOS DE CREACIÓN (✨ NUEVO) ===
+
+    def _on_create_project(self):
+        """Callback para crear nuevo proyecto"""
+        if not self.db:
+            QMessageBox.warning(self, "Error", "No hay conexión a la base de datos")
+            return
+
+        # Pedir nombre del proyecto
+        name, ok = QInputDialog.getText(
+            self,
+            "Crear Proyecto",
+            "Nombre del proyecto:",
+            QLineEdit.EchoMode.Normal
+        )
+
+        if not ok or not name.strip():
+            return
+
+        name = name.strip()
+
+        try:
+            # Crear proyecto en BD
+            project_id = self.db.add_project(name=name)
+            logger.info(f"✅ Proyecto creado: ID={project_id}, nombre='{name}'")
+
+            # Recargar proyectos en dropdown
+            self._reload_projects_and_areas()
+
+            # Auto-seleccionar el proyecto recién creado
+            self.context_selector.project_combo.setCurrentText(name)
+
+            QMessageBox.information(
+                self,
+                "Proyecto Creado",
+                f"Proyecto '{name}' creado exitosamente."
+            )
+
+        except Exception as e:
+            logger.error(f"Error creando proyecto: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"No se pudo crear el proyecto:\n{str(e)}"
+            )
+
+    def _on_create_area(self):
+        """Callback para crear nueva área"""
+        if not self.db:
+            QMessageBox.warning(self, "Error", "No hay conexión a la base de datos")
+            return
+
+        # Pedir nombre del área
+        name, ok = QInputDialog.getText(
+            self,
+            "Crear Área",
+            "Nombre del área:",
+            QLineEdit.EchoMode.Normal
+        )
+
+        if not ok or not name.strip():
+            return
+
+        name = name.strip()
+
+        try:
+            # Crear área en BD
+            area_id = self.db.add_area(name=name)
+            logger.info(f"✅ Área creada: ID={area_id}, nombre='{name}'")
+
+            # Recargar áreas en dropdown
+            self._reload_projects_and_areas()
+
+            # Auto-seleccionar el área recién creada
+            self.context_selector.area_combo.setCurrentText(name)
+
+            QMessageBox.information(
+                self,
+                "Área Creada",
+                f"Área '{name}' creada exitosamente."
+            )
+
+        except Exception as e:
+            logger.error(f"Error creando área: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"No se pudo crear el área:\n{str(e)}"
+            )
+
+    def _on_create_project_tag(self):
+        """Callback para crear nuevo tag de proyecto/área"""
+        if not self.db:
+            QMessageBox.warning(self, "Error", "No hay conexión a la base de datos")
+            return
+
+        # Verificar que haya proyecto o área seleccionado
+        if not self.current_project_id and not self.current_area_id:
+            QMessageBox.warning(
+                self,
+                "Proyecto/Área Requerido",
+                "Debe seleccionar un Proyecto o Área antes de crear un tag."
+            )
+            return
+
+        # Pedir nombre del tag
+        name, ok = QInputDialog.getText(
+            self,
+            "Crear Tag",
+            "Nombre del tag:",
+            QLineEdit.EchoMode.Normal
+        )
+
+        if not ok or not name.strip():
+            return
+
+        name = name.strip()
+
+        try:
+            # Crear tag usando el manager apropiado
+            if self.current_project_id:
+                tag = self.project_tag_manager.create_tag(
+                    name=name,
+                    color="#2196F3",
+                    description=f"Tag creado desde Visor de Proyectos/Áreas"
+                )
+                logger.info(f"✅ Tag de proyecto creado: ID={tag['id']}, nombre='{name}'")
+
+            else:  # Área
+                tag = self.area_tag_manager.create_tag(
+                    name=name,
+                    color="#2196F3",
+                    description=f"Tag creado desde Visor de Proyectos/Áreas"
+                )
+                logger.info(f"✅ Tag de área creado: ID={tag['id']}, nombre='{name}'")
+
+            # Recargar tags en chips
+            self._reload_current_tags()
+
+            QMessageBox.information(
+                self,
+                "Tag Creado",
+                f"Tag '{name}' creado exitosamente."
+            )
+
+        except Exception as e:
+            logger.error(f"Error creando tag: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"No se pudo crear el tag:\n{str(e)}"
+            )
+
+    def _on_create_list(self):
+        """Callback para crear nueva lista (TODO: implementar con contexto completo)"""
+        QMessageBox.information(
+            self,
+            "En desarrollo",
+            "La creación de listas requiere tags seleccionados.\n"
+            "Por favor use el Creador Masivo para crear listas completas."
+        )
+
+    def _on_add_item_from_group(self, lista_name: str, group_widget):
+        """
+        Callback para agregar item desde un grupo de lista (busca ID por nombre)
+
+        Args:
+            lista_name: Nombre de la lista
+            group_widget: Widget del grupo
+        """
+        if not self.db:
+            QMessageBox.warning(self, "Error", "No hay conexión a la base de datos")
+            return
+
+        try:
+            # Buscar lista por nombre
+            # Obtener el ID del primer item del grupo para saber la categoría
+            if group_widget.items:
+                first_item_id = group_widget.items[0].item_data.get('id')
+                if first_item_id:
+                    item = self.db.get_item(first_item_id)
+                    if item and item.get('list_id'):
+                        lista_id = item['list_id']
+                        self._on_add_item_to_list(lista_id, lista_name)
+                        return
+
+            # Si no se pudo obtener el ID de los items, buscar en todas las listas
+            conn = self.db.connect()
+            cursor = conn.execute("SELECT id FROM listas WHERE name = ?", (lista_name,))
+            row = cursor.fetchone()
+
+            if row:
+                lista_id = row['id']
+                self._on_add_item_to_list(lista_id, lista_name)
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Lista no encontrada",
+                    f"No se encontró la lista '{lista_name}' en la base de datos."
+                )
+
+        except Exception as e:
+            logger.error(f"Error buscando lista '{lista_name}': {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"No se pudo encontrar la lista:\n{str(e)}"
+            )
+
+    def _on_add_item_to_list(self, lista_id: int, lista_name: str):
+        """
+        Callback para agregar item a una lista específica
+
+        Args:
+            lista_id: ID de la lista
+            lista_name: Nombre de la lista
+        """
+        if not self.db:
+            QMessageBox.warning(self, "Error", "No hay conexión a la base de datos")
+            return
+
+        # Guardar lista actual
+        self.current_lista_id = lista_id
+
+        # Crear o mostrar diálogo de agregar item
+        if not self.add_item_dialog:
+            self.add_item_dialog = AddItemDialog(self)
+            self.add_item_dialog.item_created.connect(self._on_item_created)
+
+        # Posicionar diálogo cerca del visor
+        dialog_x = self.x() + (self.width() - self.add_item_dialog.width()) // 2
+        dialog_y = self.y() + 100
+        self.add_item_dialog.move(dialog_x, dialog_y)
+
+        self.add_item_dialog.show()
+        self.add_item_dialog.raise_()
+        self.add_item_dialog.activateWindow()
+
+        logger.info(f"Diálogo de agregar item mostrado para lista '{lista_name}' (ID={lista_id})")
+
+    def _on_item_created(self, item_data: dict):
+        """
+        Callback cuando se crea un item desde el diálogo
+
+        Args:
+            item_data: Datos del item {label, content, type, is_sensitive}
+        """
+        if not self.db or not self.current_lista_id:
+            logger.error("No hay lista seleccionada para agregar item")
+            return
+
+        try:
+            # Obtener ID de categoría de la lista
+            lista = self.db.get_lista(self.current_lista_id)
+            if not lista:
+                raise Exception(f"Lista {self.current_lista_id} no encontrada")
+
+            category_id = lista['category_id']
+
+            # Crear item en BD con la lista
+            item_id = self.db.add_item(
+                category_id=category_id,
+                label=item_data['label'],
+                content=item_data['content'],
+                item_type=item_data['type'],
+                is_sensitive=item_data['is_sensitive'],
+                list_id=self.current_lista_id,
+                tags=[]  # Sin tags adicionales por ahora
+            )
+
+            logger.info(f"✅ Item creado: ID={item_id}, label='{item_data['label']}' en lista {self.current_lista_id}")
+
+            # Recargar vista completa
+            if self.current_project_id:
+                self.load_project(self.current_project_id)
+            elif self.current_area_id:
+                self.load_area(self.current_area_id)
+
+            QMessageBox.information(
+                self,
+                "Item Creado",
+                f"Item '{item_data['label']}' agregado exitosamente a la lista."
+            )
+
+        except Exception as e:
+            logger.error(f"Error creando item: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"No se pudo crear el item:\n{str(e)}"
+            )
+
+    def _reload_projects_and_areas(self):
+        """Recargar proyectos y áreas en los dropdowns"""
+        try:
+            # Recargar proyectos
+            projects = self.db.get_all_projects()
+            projects_data = [(p['id'], p['name']) for p in projects]
+            self.context_selector.load_projects(projects_data)
+
+            # Recargar áreas
+            areas = self.db.get_all_areas()
+            areas_data = [(a['id'], a['name']) for a in areas]
+            self.context_selector.load_areas(areas_data)
+
+            logger.info("✅ Proyectos y áreas recargados en dropdowns")
+
+        except Exception as e:
+            logger.error(f"Error recargando proyectos/áreas: {e}")
+
+    def _reload_current_tags(self):
+        """Recargar tags del proyecto/área actual"""
+        if not self.db:
+            return
+
+        try:
+            if self.current_project_id:
+                # Recargar tags de proyecto
+                tags = self.project_tag_manager.get_tags_for_project(self.current_project_id)
+                tags_data = [{'name': t['name'], 'color': t.get('color', '#808080')} for t in tags]
+                self.tag_filter_chips.load_tags(tags_data)
+                logger.info(f"✅ Recargados {len(tags_data)} tags de proyecto")
+
+            elif self.current_area_id:
+                # Recargar tags de área
+                tags = self.area_tag_manager.get_tags_for_area(self.current_area_id)
+                tags_data = [{'name': t['name'], 'color': t.get('color', '#808080')} for t in tags]
+                self.tag_filter_chips.load_tags(tags_data)
+                logger.info(f"✅ Recargados {len(tags_data)} tags de área")
+
+        except Exception as e:
+            logger.error(f"Error recargando tags: {e}")
 
 
 # === TEST ===

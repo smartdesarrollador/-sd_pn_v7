@@ -1,25 +1,26 @@
 """
-Widget para mostrar tags como chips clickeables para filtrar (SOLO LECTURA)
+Widget para mostrar tags como chips clickeables para filtrar
 
 Muestra una colección de tags en formato de chips con FlowLayout.
 Los tags se pueden seleccionar/deseleccionar para filtrar elementos.
-
-NO permite crear nuevos tags, solo visualizar y filtrar por existentes.
+Incluye botón "+" para crear nuevos tags.
 
 Características:
 - FlowLayout: Los chips se ajustan automáticamente en filas
 - Modo OR: Filtra elementos que tengan AL MENOS uno de los tags seleccionados
 - Mensaje "Sin tags disponibles" si no hay tags
+- Botón "+" para crear nuevos tags
 
 Señales:
 - tags_changed(list): Emitida cuando cambia la selección de tags
+- create_tag_clicked: Emitida cuando se hace click en "+ Tag"
 
-Versión: 1.0
-Fecha: 2025-12-21
+Versión: 1.1
+Fecha: 2025-12-26
 """
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QFrame, QLayout, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QLayout, QSizePolicy, QPushButton
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QRect, QSize
 from PyQt6.QtGui import QFont
@@ -143,16 +144,18 @@ class FlowLayout(QLayout):
 
 class TagFilterChips(QWidget):
     """
-    Widget para mostrar tags como chips clickeables para filtrar (SOLO LECTURA)
+    Widget para mostrar tags como chips clickeables para filtrar
 
-    No permite crear nuevos tags, solo visualizar y filtrar por existentes.
+    Permite visualizar, filtrar y crear nuevos tags.
 
     Señales:
         tags_changed(list): Lista de nombres de tags seleccionados
+        create_tag_clicked: Solicitud de crear nuevo tag
     """
 
     # Señales
     tags_changed = pyqtSignal(list)  # Lista de tag_names seleccionados
+    create_tag_clicked = pyqtSignal()  # Crear nuevo tag
 
     def __init__(self, parent=None):
         """
@@ -178,11 +181,43 @@ class TagFilterChips(QWidget):
         main_layout.setContentsMargins(15, 10, 15, 10)
         main_layout.setSpacing(10)
 
-        # Header de la sección
-        header = QLabel("🏷️ Tags de Proyecto/Área")
-        header.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        header.setStyleSheet("color: #FFB300; margin-bottom: 5px;")
-        main_layout.addWidget(header)
+        # Header de la sección (con botón "+")
+        header_layout = QHBoxLayout()
+        header_layout.setSpacing(10)
+
+        header_label = QLabel("🏷️ Tags de Proyecto/Área")
+        header_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        header_label.setStyleSheet("color: #FFB300; margin-bottom: 5px;")
+        header_layout.addWidget(header_label)
+
+        header_layout.addStretch()
+
+        # Botón "+" para crear tag
+        self.create_tag_btn = QPushButton("+")
+        self.create_tag_btn.setFixedSize(24, 24)
+        self.create_tag_btn.setToolTip("Crear nuevo tag de proyecto/área")
+        self.create_tag_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.create_tag_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2d5d2e;
+                color: #00ff88;
+                border: 2px solid #00ff88;
+                border-radius: 4px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3a7a3c;
+                border-color: #7CFC00;
+            }
+            QPushButton:pressed {
+                background-color: #1a4d2e;
+            }
+        """)
+        self.create_tag_btn.clicked.connect(self.create_tag_clicked.emit)
+        header_layout.addWidget(self.create_tag_btn)
+
+        main_layout.addLayout(header_layout)
 
         # Frame contenedor
         self.container = QFrame()
