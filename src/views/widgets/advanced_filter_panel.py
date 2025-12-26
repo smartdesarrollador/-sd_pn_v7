@@ -1302,7 +1302,7 @@ class AdvancedFilterPanel(QWidget):
 
         # Nueva arquitectura v3.1.0: filtrar por items con list_id
         if self.lists_only_checkbox.isChecked():
-            filters['is_list_item'] = True
+            filters['is_list'] = True
 
         logger.debug(f"Collected filters: {filters}")
 

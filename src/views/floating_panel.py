@@ -1115,27 +1115,36 @@ class FloatingPanel(QWidget, TaskbarMinimizableMixin):
         if not self.current_category:
             return
 
-        # Aplicar filtros avanzados primero a items
-        filtered_items = self.filter_engine.apply_filters(self.all_items, self.current_filters)
+        # Verificar si el filtro "Solo Listas" está activo
+        only_lists = self.current_filters.get('is_list', False)
 
-        # Aplicar filtro de estado (is_active, is_archived)
-        filtered_items = self.filter_items_by_state(filtered_items)
+        if only_lists:
+            # Si "Solo Listas" está activo, mostrar solo listas (ningún item)
+            filtered_items = []
+            filtered_lists = self.all_lists.copy()
+        else:
+            # Aplicar filtros avanzados primero a items
+            filtered_items = self.filter_engine.apply_filters(self.all_items, self.current_filters)
 
-        # Filtrar listas (por ahora solo por nombre)
-        filtered_lists = self.all_lists.copy()
+            # Aplicar filtro de estado (is_active, is_archived)
+            filtered_items = self.filter_items_by_state(filtered_items)
+
+            # Filtrar listas (por ahora solo por nombre)
+            filtered_lists = self.all_lists.copy()
 
         # Luego aplicar búsqueda si hay query
         if query and query.strip():
-            # Buscar en items
-            from src.models.category import Category
-            temp_category = Category(
-                category_id="temp",
-                name="temp",
-                icon=""
-            )
-            # Asignar items después de crear la categoría
-            temp_category.items = filtered_items
-            filtered_items = self.search_engine.search_in_category(query, temp_category)
+            # Buscar en items (solo si no está el filtro "Solo Listas")
+            if not only_lists:
+                from src.models.category import Category
+                temp_category = Category(
+                    category_id="temp",
+                    name="temp",
+                    icon=""
+                )
+                # Asignar items después de crear la categoría
+                temp_category.items = filtered_items
+                filtered_items = self.search_engine.search_in_category(query, temp_category)
 
             # Buscar en nombres de listas
             query_lower = query.lower()
