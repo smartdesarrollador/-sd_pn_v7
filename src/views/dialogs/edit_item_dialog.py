@@ -334,23 +334,38 @@ class EditItemDialog(QDialog):
 
             # Cargar tags (si existen)
             tags = self.item_data.get('tags', [])
+            logger.info(f"📋 Tags recibidos de item_data: {tags} (tipo: {type(tags)})")
+
             if tags:
                 # Convertir lista de tags a lista de nombres
+                tag_names = []
                 if isinstance(tags, list) and len(tags) > 0:
+                    logger.debug(f"   Primer tag (muestra): {tags[0]} (tipo: {type(tags[0])})")
+
                     if isinstance(tags[0], dict):
                         # Lista de dicts {'id': x, 'name': y}
                         tag_names = [tag['name'] for tag in tags if 'name' in tag]
+                        logger.info(f"   Tags extraídos de dicts: {tag_names}")
                     else:
                         # Lista de strings
                         tag_names = tags
+                        logger.info(f"   Tags ya son strings: {tag_names}")
 
-                    self.tag_selector.set_selected_tags(tag_names)
-                    logger.debug(f"Tags cargados: {tag_names}")
+                    if tag_names:
+                        logger.info(f"🏷️  Estableciendo tags en selector: {tag_names}")
+                        self.tag_selector.set_selected_tags(tag_names)
+                        logger.info(f"✅ Tags cargados exitosamente")
+                    else:
+                        logger.warning(f"⚠️  tag_names está vacío después de conversión")
+                else:
+                    logger.warning(f"⚠️  tags no es una lista válida o está vacía")
+            else:
+                logger.info("ℹ️  Item sin tags")
 
             logger.info(f"Datos del item {self.item_id} cargados en el formulario")
 
         except Exception as e:
-            logger.error(f"Error cargando datos del item: {e}", exc_info=True)
+            logger.error(f"❌ Error cargando datos del item: {e}", exc_info=True)
             QMessageBox.critical(
                 self,
                 "Error",

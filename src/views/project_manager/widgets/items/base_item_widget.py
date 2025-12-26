@@ -569,13 +569,28 @@ class BaseItemWidget(QFrame):
                 logger.error("No se pudo obtener db_manager para editar item")
                 return
 
-            # Crear y mostrar diálogo de edición
-            dialog = EditItemDialog(item_data=self.item_data, db_manager=db_manager, parent=self.window())
+            # Obtener datos completos del item desde BD (incluye tags actualizados)
+            item_id = self.item_data.get('id')
+            if not item_id:
+                logger.error("Item sin ID - no se puede editar")
+                return
+
+            logger.info(f"📋 Obteniendo datos completos del item {item_id} desde BD...")
+            fresh_item_data = db_manager.get_item(item_id)
+
+            if not fresh_item_data:
+                logger.error(f"No se pudo obtener item {item_id} desde BD")
+                return
+
+            logger.info(f"✅ Item obtenido: tags={fresh_item_data.get('tags', [])}")
+
+            # Crear y mostrar diálogo de edición con datos frescos
+            dialog = EditItemDialog(item_data=fresh_item_data, db_manager=db_manager, parent=self.window())
             dialog.item_updated.connect(self._on_item_updated)
             result = dialog.exec()
 
             if result:
-                logger.info(f"Item {self.item_data.get('id')} editado exitosamente")
+                logger.info(f"Item {item_id} editado exitosamente")
                 # Recargar la vista
                 self._reload_view()
 
