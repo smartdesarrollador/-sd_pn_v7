@@ -52,6 +52,7 @@ class BaseItemWidget(QFrame):
 
         self.init_base_ui()
         self.render_content()  # Método abstracto - implementado por subclases
+        self._adjust_height_for_content()  # Ajustar altura según contenido
 
     def init_base_ui(self):
         """Inicializar UI base común a todos los items"""
@@ -486,6 +487,9 @@ class BaseItemWidget(QFrame):
         # Volver a renderizar el contenido
         self.render_content()
 
+        # Ajustar altura según contenido actualizado
+        self._adjust_height_for_content()
+
         # Asegurar que el scroll se actualice correctamente
         self.content_container.adjustSize()
         self.content_scroll.updateGeometry()
@@ -558,6 +562,32 @@ class BaseItemWidget(QFrame):
 
         except Exception as e:
             logger.error(f"Error showing item details: {e}")
+
+    def _adjust_height_for_content(self):
+        """
+        Ajustar altura del widget según la cantidad de contenido
+
+        Si el contenido es muy extenso (>400 caracteres), amplía la altura
+        máxima al doble (600px) para mostrar más texto sin scroll inicial.
+        """
+        # Obtener contenido del item (manejar valores None)
+        content = self.item_data.get('content', '') or ''
+        label = self.item_data.get('label', '') or ''
+        description = self.item_data.get('description', '') or ''
+
+        # Calcular longitud total
+        total_length = len(content) + len(label) + len(description)
+
+        # Si el contenido es muy extenso, ampliar altura al doble
+        if total_length > 400:  # Reducido de 800 a 400 para mejor detección
+            self.setMaximumHeight(1000)  # Ampliar a 600px
+            logger.debug(f"Item con contenido extenso ({total_length} chars): altura ampliada a 600px")
+        else:
+            self.setMaximumHeight(300)  # Mantener altura estándar
+            logger.debug(f"Item con contenido normal ({total_length} chars): altura estándar 300px")
+
+        # Actualizar geometría
+        self.updateGeometry()
 
     def _reload_area_view(self):
         """
