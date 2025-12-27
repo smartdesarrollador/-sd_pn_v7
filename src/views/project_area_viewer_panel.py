@@ -125,6 +125,7 @@ class ProjectAreaViewerPanel(QWidget):
         self.current_result_index = -1
         self.project_data = None  # Datos del proyecto/área actual
         self.tag_headers = []  # Lista de headers de tags (para colapsar todo)
+        self.newly_created_tag_ids = []  # Tags creados en esta sesión (para mostrarlos aunque no tengan relaciones)
 
         # Configuración de ventana
         self.setWindowTitle("📋 Listar Proyectos/Áreas")
@@ -525,6 +526,9 @@ class ProjectAreaViewerPanel(QWidget):
             self.tag_filter_chips.clear_selection()
             self.current_filters = []
 
+            # Limpiar lista de tags recién creados (nueva sesión de proyecto)
+            self.newly_created_tag_ids = []
+
             # Cargar tags del proyecto ✅ FASE 3
             self._load_project_tags(project_id)
 
@@ -554,6 +558,9 @@ class ProjectAreaViewerPanel(QWidget):
             # Limpiar selección de tags anteriores
             self.tag_filter_chips.clear_selection()
             self.current_filters = []
+
+            # Limpiar lista de tags recién creados (nueva sesión de área)
+            self.newly_created_tag_ids = []
 
             # Cargar tags del área ✅ FASE 3
             self._load_area_tags(area_id)
@@ -1210,6 +1217,8 @@ class ProjectAreaViewerPanel(QWidget):
         """
         Obtener tags filtrados según selección actual
 
+        IMPORTANTE: Incluye tags recién creados aunque no tengan relaciones todavía
+
         Returns:
             Lista de tags a renderizar (todos o solo los filtrados)
         """
@@ -1221,9 +1230,26 @@ class ProjectAreaViewerPanel(QWidget):
 
         # Filtrar solo los tags seleccionados (modo OR)
         filtered_tags = []
+        tag_names_in_data = {tag['tag_name'] for tag in all_tags}
+
         for tag_data in all_tags:
             if tag_data['tag_name'] in self.current_filters:
                 filtered_tags.append(tag_data)
+
+        # ✨ NUEVO: Agregar tags recién creados que están en filtros pero no en project_data
+        # Esto permite que tags sin listas se rendericen con el mensaje "SIN LISTAS - CREAR LISTA"
+        for tag_name in self.current_filters:
+            if tag_name not in tag_names_in_data:
+                # Tag filtrado no existe en project_data → crear entrada vacía
+                # Obtener color del tag desde BD
+                tag_color = self._get_tag_color_from_db(tag_name)
+
+                filtered_tags.append({
+                    'tag_name': tag_name,
+                    'tag_color': tag_color or '#808080',
+                    'groups': []  # Sin grupos → mostrará "SIN LISTAS - CREAR LISTA"
+                })
+                logger.debug(f"Tag '{tag_name}' agregado a vista (sin relaciones todavía)")
 
         return filtered_tags
 
@@ -1282,32 +1308,40 @@ class ProjectAreaViewerPanel(QWidget):
         tag_id = tag_data.get('tag_id', None)  # tag_id puede no estar disponible
 
         # Grupos de items
-        for group in tag_data.get('groups', []):
-            group_widget = ItemGroupWidget(
-                group['name'],
-                group['type']
-            )
+        groups = tag_data.get('groups', [])
 
-            # Conectar señales del grupo (✨ NUEVO)
-            # Pasar tag_name y tag_id al callback usando lambda
-            create_list_callback = lambda checked=False, tn=tag_name, tid=tag_id: self._on_create_list(tn, tid)
-            group_widget.create_list_clicked.connect(create_list_callback)
+        if not groups:
+            # ✨ NUEVO: Si el tag no tiene listas, mostrar mensaje con botón crear lista
+            empty_widget = self._create_empty_tag_widget(tag_name, tag_id)
+            tag_container_layout.addWidget(empty_widget)
+        else:
+            # Renderizar grupos normalmente
+            for group in groups:
+                group_widget = ItemGroupWidget(
+                    group['name'],
+                    group['type']
+                )
 
-            # Si es lista, conectar señal de agregar item
-            if group['type'] == 'list':
-                # Necesitamos pasar el ID de la lista al callback
-                # Por ahora, asumimos que group['name'] es el nombre de la lista
-                # y buscamos su ID (TODO: mejorar esto con ID directo en los datos)
-                lista_name = group['name']
-                # Crear lambda con valores capturados
-                add_item_callback = lambda checked=False, ln=lista_name, gw=group_widget: self._on_add_item_from_group(ln, gw)
-                group_widget.add_item_clicked.connect(add_item_callback)
+                # Conectar señales del grupo (✨ NUEVO)
+                # Pasar tag_name y tag_id al callback usando lambda
+                create_list_callback = lambda checked=False, tn=tag_name, tid=tag_id: self._on_create_list(tn, tid)
+                group_widget.create_list_clicked.connect(create_list_callback)
 
-            # Agregar items al grupo
-            for item_data in group['items']:
-                group_widget.add_item(item_data)
+                # Si es lista, conectar señal de agregar item
+                if group['type'] == 'list':
+                    # Necesitamos pasar el ID de la lista al callback
+                    # Por ahora, asumimos que group['name'] es el nombre de la lista
+                    # y buscamos su ID (TODO: mejorar esto con ID directo en los datos)
+                    lista_name = group['name']
+                    # Crear lambda con valores capturados
+                    add_item_callback = lambda checked=False, ln=lista_name, gw=group_widget: self._on_add_item_from_group(ln, gw)
+                    group_widget.add_item_clicked.connect(add_item_callback)
 
-            tag_container_layout.addWidget(group_widget)
+                # Agregar items al grupo
+                for item_data in group['items']:
+                    group_widget.add_item(item_data)
+
+                tag_container_layout.addWidget(group_widget)
 
         self.content_layout.addWidget(tag_container)
 
@@ -1492,13 +1526,19 @@ class ProjectAreaViewerPanel(QWidget):
 
         try:
             # Crear tag usando el manager apropiado
+            tag = None
             if self.current_project_id:
                 tag = self.project_tag_manager.create_tag(
                     name=name,
                     color="#2196F3",
                     description=f"Tag creado desde Visor de Proyectos/Áreas"
                 )
-                logger.info(f"✅ Tag de proyecto creado: ID={tag['id']}, nombre='{name}'")
+                if tag:
+                    logger.info(f"✅ Tag de proyecto creado: ID={tag.id}, nombre='{name}'")
+                    # Agregar a la lista de tags recién creados para que aparezca en la UI
+                    self.newly_created_tag_ids.append(tag.id)
+                else:
+                    raise Exception("No se pudo crear el tag de proyecto")
 
             else:  # Área
                 tag = self.area_tag_manager.create_tag(
@@ -1506,9 +1546,14 @@ class ProjectAreaViewerPanel(QWidget):
                     color="#2196F3",
                     description=f"Tag creado desde Visor de Proyectos/Áreas"
                 )
-                logger.info(f"✅ Tag de área creado: ID={tag['id']}, nombre='{name}'")
+                if tag:
+                    logger.info(f"✅ Tag de área creado: ID={tag.id}, nombre='{name}'")
+                    # Agregar a la lista de tags recién creados para que aparezca en la UI
+                    self.newly_created_tag_ids.append(tag.id)
+                else:
+                    raise Exception("No se pudo crear el tag de área")
 
-            # Recargar tags en chips
+            # Recargar tags en chips (mostrará tags con relaciones + tags recién creados)
             self._reload_current_tags()
 
             QMessageBox.information(
@@ -1824,27 +1869,201 @@ class ProjectAreaViewerPanel(QWidget):
             logger.error(f"Error recargando proyectos/áreas: {e}")
 
     def _reload_current_tags(self):
-        """Recargar tags del proyecto/área actual"""
+        """
+        Recargar tags del proyecto/área actual
+
+        Muestra:
+        1. Tags que tienen relaciones en el proyecto/área actual
+        2. Tags recién creados en esta sesión (aunque no tengan relaciones todavía)
+        """
         if not self.db:
             return
 
         try:
+            conn = self.db.connect()
+
             if self.current_project_id:
-                # Recargar tags de proyecto
-                tags = self.project_tag_manager.get_tags_for_project(self.current_project_id)
-                tags_data = [{'name': t['name'], 'color': t.get('color', '#808080')} for t in tags]
+                # Obtener tags con relaciones en este proyecto
+                cursor = conn.execute("""
+                    SELECT DISTINCT pet.id, pet.name, pet.color
+                    FROM project_element_tag_associations ta
+                    JOIN project_element_tags pet ON ta.tag_id = pet.id
+                    JOIN project_relations pr ON ta.project_relation_id = pr.id
+                    WHERE pr.project_id = ?
+                    ORDER BY pet.name ASC
+                """, (self.current_project_id,))
+
+                tags_with_relations = {row['id']: row for row in cursor.fetchall()}
+
+                # Agregar tags recién creados (aunque no tengan relaciones)
+                if self.newly_created_tag_ids:
+                    placeholders = ','.join('?' * len(self.newly_created_tag_ids))
+                    cursor = conn.execute(f"""
+                        SELECT id, name, color
+                        FROM project_element_tags
+                        WHERE id IN ({placeholders})
+                    """, self.newly_created_tag_ids)
+
+                    for row in cursor.fetchall():
+                        if row['id'] not in tags_with_relations:
+                            tags_with_relations[row['id']] = row
+
+                # Convertir a lista de diccionarios
+                tags_data = [
+                    {
+                        'name': tag['name'],
+                        'color': tag['color'] if tag['color'] else '#808080'
+                    }
+                    for tag in tags_with_relations.values()
+                ]
+
                 self.tag_filter_chips.load_tags(tags_data)
                 logger.info(f"✅ Recargados {len(tags_data)} tags de proyecto")
 
             elif self.current_area_id:
-                # Recargar tags de área
-                tags = self.area_tag_manager.get_tags_for_area(self.current_area_id)
-                tags_data = [{'name': t['name'], 'color': t.get('color', '#808080')} for t in tags]
+                # Obtener tags con relaciones en esta área
+                cursor = conn.execute("""
+                    SELECT DISTINCT aet.id, aet.name, aet.color
+                    FROM area_element_tag_associations ta
+                    JOIN area_element_tags aet ON ta.tag_id = aet.id
+                    JOIN area_relations ar ON ta.area_relation_id = ar.id
+                    WHERE ar.area_id = ?
+                    ORDER BY aet.name ASC
+                """, (self.current_area_id,))
+
+                tags_with_relations = {row['id']: row for row in cursor.fetchall()}
+
+                # Agregar tags recién creados (aunque no tengan relaciones)
+                if self.newly_created_tag_ids:
+                    placeholders = ','.join('?' * len(self.newly_created_tag_ids))
+                    cursor = conn.execute(f"""
+                        SELECT id, name, color
+                        FROM area_element_tags
+                        WHERE id IN ({placeholders})
+                    """, self.newly_created_tag_ids)
+
+                    for row in cursor.fetchall():
+                        if row['id'] not in tags_with_relations:
+                            tags_with_relations[row['id']] = row
+
+                # Convertir a lista de diccionarios
+                tags_data = [
+                    {
+                        'name': tag['name'],
+                        'color': tag['color'] if tag['color'] else '#808080'
+                    }
+                    for tag in tags_with_relations.values()
+                ]
+
                 self.tag_filter_chips.load_tags(tags_data)
                 logger.info(f"✅ Recargados {len(tags_data)} tags de área")
 
         except Exception as e:
             logger.error(f"Error recargando tags: {e}")
+
+    def _get_tag_color_from_db(self, tag_name: str) -> Optional[str]:
+        """
+        Obtener color de un tag desde la base de datos
+
+        Args:
+            tag_name: Nombre del tag
+
+        Returns:
+            Color del tag en formato hex o None si no se encuentra
+        """
+        if not self.db:
+            return None
+
+        try:
+            conn = self.db.connect()
+
+            if self.current_project_id:
+                # Buscar en tags de proyecto
+                cursor = conn.execute(
+                    "SELECT color FROM project_element_tags WHERE name = ?",
+                    (tag_name,)
+                )
+            elif self.current_area_id:
+                # Buscar en tags de área
+                cursor = conn.execute(
+                    "SELECT color FROM area_element_tags WHERE name = ?",
+                    (tag_name,)
+                )
+            else:
+                return None
+
+            row = cursor.fetchone()
+            return row['color'] if row else None
+
+        except Exception as e:
+            logger.error(f"Error obteniendo color del tag '{tag_name}': {e}")
+            return None
+
+    def _create_empty_tag_widget(self, tag_name: str, tag_id: Optional[int]) -> QWidget:
+        """
+        Crea widget para mostrar cuando un tag no tiene listas
+
+        Muestra: "SIN LISTAS - CREAR LISTA" con botón +
+
+        Args:
+            tag_name: Nombre del tag
+            tag_id: ID del tag (opcional)
+
+        Returns:
+            Widget con mensaje y botón
+        """
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(20, 10, 20, 10)
+        layout.setSpacing(10)
+
+        # Mensaje
+        label = QLabel("SIN LISTAS - CREAR LISTA")
+        label.setStyleSheet("""
+            QLabel {
+                color: #4CAF50;
+                font-size: 13px;
+                font-weight: bold;
+            }
+        """)
+        layout.addWidget(label)
+
+        layout.addStretch()
+
+        # Botón crear lista
+        btn_create = QPushButton("+")
+        btn_create.setFixedSize(30, 30)
+        btn_create.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 15px;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:pressed {
+                background-color: #3d8b40;
+            }
+        """)
+        btn_create.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        # Conectar al callback de crear lista
+        btn_create.clicked.connect(lambda: self._on_create_list(tag_name, tag_id))
+
+        layout.addWidget(btn_create)
+
+        container.setStyleSheet("""
+            QWidget {
+                background-color: #2b2b2b;
+                border-radius: 5px;
+            }
+        """)
+
+        return container
 
     # === MÉTODOS AUXILIARES PARA ASOCIACIÓN DE LISTAS A TAGS ===
 
