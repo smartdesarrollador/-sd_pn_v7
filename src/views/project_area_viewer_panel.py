@@ -1311,9 +1311,27 @@ class ProjectAreaViewerPanel(QWidget):
         groups = tag_data.get('groups', [])
 
         if not groups:
-            # ✨ NUEVO: Si el tag no tiene listas, mostrar mensaje con botón crear lista
-            empty_widget = self._create_empty_tag_widget(tag_name, tag_id)
-            tag_container_layout.addWidget(empty_widget)
+            # ✨ Si el tag no tiene listas, crear un ItemGroupWidget vacío con mensaje
+            empty_group = ItemGroupWidget("Listas", "list")
+
+            # Conectar señal de crear lista
+            create_list_callback = lambda checked=False, tn=tag_name, tid=tag_id: self._on_create_list(tn, tid)
+            empty_group.create_list_clicked.connect(create_list_callback)
+
+            # Agregar mensaje "Sin listas" en lugar de items
+            empty_label = QLabel("Sin listas")
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_label.setStyleSheet("""
+                QLabel {
+                    color: #888;
+                    font-size: 11px;
+                    font-style: italic;
+                    padding: 15px;
+                }
+            """)
+            empty_group.items_layout.addWidget(empty_label)
+
+            tag_container_layout.addWidget(empty_group)
         else:
             # Renderizar grupos normalmente
             for group in groups:
@@ -1630,6 +1648,10 @@ class ProjectAreaViewerPanel(QWidget):
                 logger.warning(f"⚠️ No se pudo crear tag de item: {e}")
                 # No es crítico, continuar
 
+            # ===  DEBUG: Log estado antes de asociar ===
+            logger.info(f"🔍 DEBUG: tag_name='{tag_name}', tag_id={tag_id}")
+            logger.info(f"🔍 DEBUG: current_project_id={self.current_project_id}, current_area_id={self.current_area_id}")
+
             # Asociar lista al tag de proyecto/área si corresponde
             if tag_name and (self.current_project_id or self.current_area_id):
                 try:
@@ -1685,12 +1707,19 @@ class ProjectAreaViewerPanel(QWidget):
                     logger.warning(f"⚠️ No se pudo asociar lista al tag: {e}")
                     # No es crítico, continuar
 
-            # Recargar vista completa
+            # Recargar datos del área/proyecto desde BD
             if self.current_project_id:
-                self.load_project(self.current_project_id)
+                # Recargar datos sin perder filtros actuales
+                self.project_data = self.data_manager.get_project_full_data(self.current_project_id)
+                # Re-renderizar con filtros actuales preservados
+                self.render_view()
             elif self.current_area_id:
-                self.load_area(self.current_area_id)
+                # Recargar datos sin perder filtros actuales
+                self.project_data = self.data_manager.get_area_full_data(self.current_area_id)
+                # Re-renderizar con filtros actuales preservados
+                self.render_view()
 
+            # Mostrar mensaje de éxito (sin bloquear)
             QMessageBox.information(
                 self,
                 "Lista Creada",
@@ -1830,11 +1859,13 @@ class ProjectAreaViewerPanel(QWidget):
                 logger.warning(f"⚠️ No se pudo agregar tag automático al item: {e}")
                 # No es crítico, continuar
 
-            # Recargar vista completa
+            # Recargar datos del área/proyecto desde BD sin perder filtros
             if self.current_project_id:
-                self.load_project(self.current_project_id)
+                self.project_data = self.data_manager.get_project_full_data(self.current_project_id)
+                self.render_view()
             elif self.current_area_id:
-                self.load_area(self.current_area_id)
+                self.project_data = self.data_manager.get_area_full_data(self.current_area_id)
+                self.render_view()
 
             QMessageBox.information(
                 self,
@@ -1998,72 +2029,6 @@ class ProjectAreaViewerPanel(QWidget):
         except Exception as e:
             logger.error(f"Error obteniendo color del tag '{tag_name}': {e}")
             return None
-
-    def _create_empty_tag_widget(self, tag_name: str, tag_id: Optional[int]) -> QWidget:
-        """
-        Crea widget para mostrar cuando un tag no tiene listas
-
-        Muestra: "SIN LISTAS - CREAR LISTA" con botón +
-
-        Args:
-            tag_name: Nombre del tag
-            tag_id: ID del tag (opcional)
-
-        Returns:
-            Widget con mensaje y botón
-        """
-        container = QWidget()
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(20, 10, 20, 10)
-        layout.setSpacing(10)
-
-        # Mensaje
-        label = QLabel("SIN LISTAS - CREAR LISTA")
-        label.setStyleSheet("""
-            QLabel {
-                color: #4CAF50;
-                font-size: 13px;
-                font-weight: bold;
-            }
-        """)
-        layout.addWidget(label)
-
-        layout.addStretch()
-
-        # Botón crear lista
-        btn_create = QPushButton("+")
-        btn_create.setFixedSize(30, 30)
-        btn_create.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                border-radius: 15px;
-                font-size: 18px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-            QPushButton:pressed {
-                background-color: #3d8b40;
-            }
-        """)
-        btn_create.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        # Conectar al callback de crear lista
-        btn_create.clicked.connect(lambda: self._on_create_list(tag_name, tag_id))
-
-        layout.addWidget(btn_create)
-
-        container.setStyleSheet("""
-            QWidget {
-                background-color: #2b2b2b;
-                border-radius: 5px;
-            }
-        """)
-
-        return container
 
     # === MÉTODOS AUXILIARES PARA ASOCIACIÓN DE LISTAS A TAGS ===
 

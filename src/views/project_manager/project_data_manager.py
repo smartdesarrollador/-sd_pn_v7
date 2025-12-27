@@ -277,13 +277,15 @@ Python fue creado por Guido van Rossum y lanzado por primera vez en 1991. El nom
 
                     elif entity_type == 'list':
                         items = self.db.get_items_by_lista(entity_id)
-                        if items:
-                            list_name = items[0].get('lista_name', 'Lista sin nombre') if items else 'Lista'
-                            groups_data.append({
-                                'type': 'list',
-                                'name': list_name,
-                                'items': self._format_items(items)
-                            })
+                        # Obtener nombre de la lista desde la BD
+                        lista = self.db.get_lista(entity_id)
+                        list_name = lista.get('name', 'Lista sin nombre') if lista else 'Lista'
+                        # Incluir lista incluso si está vacía (sin items)
+                        groups_data.append({
+                            'type': 'list',
+                            'name': list_name,
+                            'items': self._format_items(items) if items else []
+                        })
 
                     elif entity_type == 'tag':
                         items = self.db.get_items_by_tag_id(entity_id)
@@ -323,7 +325,7 @@ Python fue creado por Guido van Rossum y lanzado por primera vez en 1991. El nom
                                 'items': []
                             })
 
-                # Solo agregar el tag si tiene grupos con items
+                # Agregar tag incluso si tiene listas vacías (para mostrar botón "+ Agregar Item")
                 if groups_data:
                     tags_data.append({
                         'tag_name': tag_name,
@@ -838,13 +840,15 @@ Python fue creado por Guido van Rossum y lanzado por primera vez en 1991. El nom
 
                     elif entity_type == 'list':
                         items = self.db.get_items_by_lista(entity_id)
-                        if items:
-                            list_name = items[0].get('lista_name', 'Lista sin nombre') if items else 'Lista'
-                            groups_data.append({
-                                'type': 'list',
-                                'name': list_name,
-                                'items': self._format_items(items)
-                            })
+                        # Obtener nombre de la lista desde la BD
+                        lista = self.db.get_lista(entity_id)
+                        list_name = lista.get('name', 'Lista sin nombre') if lista else 'Lista'
+                        # Incluir lista incluso si está vacía (sin items)
+                        groups_data.append({
+                            'type': 'list',
+                            'name': list_name,
+                            'items': self._format_items(items) if items else []
+                        })
 
                     elif entity_type == 'tag':
                         items = self.db.get_items_by_tag_id(entity_id)
@@ -884,7 +888,7 @@ Python fue creado por Guido van Rossum y lanzado por primera vez en 1991. El nom
                                 'items': []
                             })
 
-                # Solo agregar el tag si tiene grupos con items
+                # Agregar tag incluso si tiene listas vacías (para mostrar botón "+ Agregar Item")
                 if groups_data:
                     tags_data.append({
                         'tag_name': tag_name,
