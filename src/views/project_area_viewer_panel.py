@@ -157,24 +157,11 @@ class ProjectAreaViewerPanel(QWidget):
         header = self._create_header()
         layout.addWidget(header)
 
-        # Sección Contexto (Proyecto/Área dropdowns) ✅ FASE 2
+        # Sección Contexto (Proyecto/Área dropdowns) ✅ FASE 2 - SIEMPRE VISIBLE
         self.context_selector = ContextSelectorCompact()
         layout.addWidget(self.context_selector)
 
-        # Sección Tags de Proyecto/Área (chips clickeables) ✅ FASE 3
-        self.tag_filter_chips = TagFilterChips()
-        layout.addWidget(self.tag_filter_chips)
-
-        # Controles de Vista (Colapsar Todo, Buscar) ✅ FASE 4
-        view_controls = self._create_view_controls()
-        layout.addWidget(view_controls)
-
-        # Barra de Búsqueda (oculta por defecto) ✅ FASE 5
-        self.search_bar = SearchBarWidget()
-        self.search_bar.setVisible(False)  # Oculta por defecto
-        layout.addWidget(self.search_bar)
-
-        # Área de Contenido con Scroll ✅ FASE 6
+        # ✨ ÁREA DE SCROLL COMPLETA - Incluye Tags, Controles y Contenido
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -202,15 +189,38 @@ class ProjectAreaViewerPanel(QWidget):
             }
         """)
 
-        # Contenedor de contenido (dentro del scroll area)
+        # Contenedor principal dentro del scroll (incluye todo lo scrolleable)
+        scroll_content_widget = QWidget()
+        scroll_content_widget.setStyleSheet("background-color: #1e1e1e;")
+        scroll_content_layout = QVBoxLayout(scroll_content_widget)
+        scroll_content_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_content_layout.setSpacing(0)
+
+        # Sección Tags de Proyecto/Área (chips clickeables) ✅ FASE 3 - DENTRO DEL SCROLL
+        self.tag_filter_chips = TagFilterChips()
+        scroll_content_layout.addWidget(self.tag_filter_chips)
+
+        # Controles de Vista (Colapsar Todo, Buscar) ✅ FASE 4 - DENTRO DEL SCROLL
+        view_controls = self._create_view_controls()
+        scroll_content_layout.addWidget(view_controls)
+
+        # Barra de Búsqueda (oculta por defecto) ✅ FASE 5 - DENTRO DEL SCROLL
+        self.search_bar = SearchBarWidget()
+        self.search_bar.setVisible(False)  # Oculta por defecto
+        scroll_content_layout.addWidget(self.search_bar)
+
+        # Contenedor de items/contenido ✅ FASE 6 - DENTRO DEL SCROLL
         self.content_widget = QWidget()
+        self.content_widget.setStyleSheet("background-color: #1e1e1e;")
         self.content_layout = QVBoxLayout(self.content_widget)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(0)
         self.content_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # Establecer widget de contenido en scroll area
-        self.scroll_area.setWidget(self.content_widget)
+        scroll_content_layout.addWidget(self.content_widget)
+
+        # Establecer widget scrolleable en scroll area
+        self.scroll_area.setWidget(scroll_content_widget)
         layout.addWidget(self.scroll_area)
 
         # Mostrar estado vacío inicial
