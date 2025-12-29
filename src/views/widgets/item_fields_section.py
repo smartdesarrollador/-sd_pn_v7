@@ -87,7 +87,7 @@ class ItemFieldsSection(QWidget):
         button_layout.setContentsMargins(0, 10, 0, 0)
         button_layout.addStretch()
 
-        self.add_special_btn = QPushButton("⚙️ Item Especial")
+        self.add_special_btn = QPushButton("Agregar Item")
         self.add_special_btn.setFixedHeight(35)
         self.add_special_btn.setMinimumWidth(140)
         self.add_special_btn.setToolTip("Agregar item especial con label separado y checkbox sensible")
