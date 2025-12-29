@@ -519,7 +519,7 @@ class BaseItemWidget(QFrame):
         """
         Crear botones comunes a todos los tipos de items
 
-        ✨ NUEVO DISEÑO: Solo botón de info (azul)
+        ✨ NUEVO DISEÑO: Botones de info (azul) y eliminar (rojo)
         """
         # Botón detalles/info (azul)
         self.info_btn = QPushButton("ℹ️")
@@ -545,6 +545,31 @@ class BaseItemWidget(QFrame):
         self.info_btn.setToolTip("Ver detalles del item")
         self.info_btn.clicked.connect(self._show_details)
         self.buttons_layout.addWidget(self.info_btn)
+
+        # Botón eliminar (rojo)
+        self.delete_btn = QPushButton("🗑️")
+        self.delete_btn.setFixedSize(32, 24)
+        self.delete_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #d32f2f;
+                color: #ffffff;
+                border: 1px solid #b71c1c;
+                border-radius: 4px;
+                font-size: 14px;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background-color: #c62828;
+                border-color: #8e0000;
+            }
+            QPushButton:pressed {
+                background-color: #b71c1c;
+            }
+        """)
+        self.delete_btn.setToolTip("Eliminar item")
+        self.delete_btn.clicked.connect(self._delete_item)
+        self.buttons_layout.addWidget(self.delete_btn)
 
     def _toggle_reveal(self):
         """Revelar/ocultar contenido sensible"""
@@ -1023,6 +1048,86 @@ class BaseItemWidget(QFrame):
 
         except Exception as e:
             logger.error(f"❌ Error moviendo item hacia abajo: {e}", exc_info=True)
+
+    def _delete_item(self):
+        """
+        Eliminar item de la base de datos
+
+        Solicita confirmación antes de eliminar y recarga la vista después.
+        """
+        try:
+            # Si el item es sensible, verificar contraseña maestra
+            if self.item_data.get('is_sensitive', False):
+                from src.views.dialogs.master_password_dialog import MasterPasswordDialog
+
+                item_label = self.item_data.get('label', 'item sensible')
+                verified = MasterPasswordDialog.verify(
+                    title="Item Sensible",
+                    message=f"Ingresa tu contraseña maestra para eliminar:\n'{item_label}'",
+                    parent=self.window()
+                )
+
+                if not verified:
+                    logger.info(f"Master password verification cancelled for deleting item: {item_label}")
+                    return
+
+            # Obtener db_manager
+            db_manager = self._get_db_manager()
+            if not db_manager:
+                logger.error("No se pudo obtener db_manager para eliminar item")
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self.window(),
+                    "Error",
+                    "No se pudo conectar a la base de datos"
+                )
+                return
+
+            # Obtener datos del item
+            item_id = self.item_data.get('id')
+            item_label = self.item_data.get('label', 'item sin título')
+
+            if not item_id:
+                logger.error("Item sin ID - no se puede eliminar")
+                return
+
+            # Mostrar diálogo de confirmación
+            from PyQt6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self.window(),
+                "Confirmar Eliminación",
+                f"¿Estás seguro que deseas eliminar el item:\n\n'{item_label}'?\n\nEsta acción no se puede deshacer.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.No:
+                logger.debug(f"Eliminación de item {item_id} cancelada por el usuario")
+                return
+
+            # Eliminar item de BD
+            logger.info(f"🗑️ Eliminando item {item_id} ('{item_label}')")
+            db_manager.delete_item(item_id)
+            logger.info(f"✅ Item {item_id} eliminado exitosamente")
+
+            # Recargar vista
+            self._reload_view()
+
+            # Mostrar mensaje de éxito
+            QMessageBox.information(
+                self.window(),
+                "Item Eliminado",
+                f"El item '{item_label}' fue eliminado exitosamente."
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Error eliminando item: {e}", exc_info=True)
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self.window(),
+                "Error",
+                f"No se pudo eliminar el item:\n{str(e)}"
+            )
 
     def _show_copy_success_feedback(self):
         """
