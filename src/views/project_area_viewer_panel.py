@@ -128,7 +128,7 @@ class ProjectAreaViewerPanel(QWidget):
         self.newly_created_tag_ids = []  # Tags creados en esta sesión (para mostrarlos aunque no tengan relaciones)
 
         # Configuración de ventana
-        self.setWindowTitle("📋 Listar Proyectos/Áreas")
+        self.setWindowTitle("📋 Visor de Proyectos/Áreas")
         self.setMinimumSize(VIEWER_WIDTH, VIEWER_MIN_HEIGHT)
 
         # Frameless window (Tool para no aparecer en barra de tareas)
@@ -242,7 +242,7 @@ class ProjectAreaViewerPanel(QWidget):
         layout.setSpacing(8)
 
         # Título (arrastrable)
-        title = QLabel("📋 Listar Proyectos/Áreas")
+        title = QLabel("📋 Visor de Proyectos/Áreas")
         title.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         title.setStyleSheet("color: #ffffff;")
         layout.addWidget(title)

@@ -318,7 +318,7 @@ class Sidebar(QWidget):
         # Project/Area Viewer button (📋)
         self.project_area_viewer_button = QPushButton("📋")
         self.project_area_viewer_button.setFixedSize(70, 40)
-        self.project_area_viewer_button.setToolTip("Listar Proyectos/Áreas")
+        self.project_area_viewer_button.setToolTip("Visor de Proyectos/Áreas")
         self.project_area_viewer_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.project_area_viewer_button.setStyleSheet(f"""
             QPushButton {{

@@ -169,22 +169,23 @@ class BulkItemCreatorDialog(QWidget):
         layout.addStretch()
 
         # Botón Actualizar (refrescar datos de BD)
-        refresh_btn = QPushButton("🔄")
+        refresh_btn = QPushButton("⟳")
         refresh_btn.setFixedSize(20, 20)
         refresh_btn.setToolTip("Actualizar datos desde la base de datos")
         refresh_btn.clicked.connect(self._on_refresh_clicked)
         refresh_btn.setStyleSheet("""
             QPushButton {
-                background-color: #4CAF50;
+                background-color: #00BCD4;
                 color: #fff;
                 border: none;
-                font-size: 12px;
+                font-size: 16px;
+                font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #00ACC1;
             }
             QPushButton:pressed {
-                background-color: #388E3C;
+                background-color: #0097A7;
             }
         """)
         layout.addWidget(refresh_btn)
@@ -195,7 +196,7 @@ class BulkItemCreatorDialog(QWidget):
         layout.addWidget(self.info_label)
 
         # Botón minimizar
-        minimize_btn = QPushButton("−")
+        minimize_btn = QPushButton("━")
         minimize_btn.setFixedSize(20, 20)
         minimize_btn.setToolTip("Ocultar ventana")
         minimize_btn.clicked.connect(self.hide)
@@ -204,7 +205,7 @@ class BulkItemCreatorDialog(QWidget):
                 background-color: #555;
                 color: #fff;
                 border: none;
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: bold;
             }
             QPushButton:hover {
@@ -214,7 +215,7 @@ class BulkItemCreatorDialog(QWidget):
         layout.addWidget(minimize_btn)
 
         # Botón cerrar
-        close_btn = QPushButton("✕")
+        close_btn = QPushButton("✖")
         close_btn.setFixedSize(20, 20)
         close_btn.setToolTip("Cerrar")
         close_btn.clicked.connect(self._on_close_clicked)
@@ -223,7 +224,7 @@ class BulkItemCreatorDialog(QWidget):
                 background-color: #d32f2f;
                 color: #fff;
                 border: none;
-                font-size: 12px;
+                font-size: 16px;
                 font-weight: bold;
             }
             QPushButton:hover {
